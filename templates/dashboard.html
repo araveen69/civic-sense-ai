@@ -1,0 +1,106 @@
+{% extends 'base.html' %}
+{% block title %}Public Dashboard{% endblock %}
+{% block content %}
+<h3 class="mb-4"><i class="fa-solid fa-chart-line"></i> Public Issue Dashboard</h3>
+
+<div class="row mb-4">
+  <div class="col-md-6">
+    <canvas id="categoryChart"></canvas>
+  </div>
+  <div class="col-md-6">
+    <canvas id="priorityChart"></canvas>
+  </div>
+</div>
+
+<form method="GET" class="row g-2 mb-4">
+  <div class="col-md-3">
+    <select name="category" class="form-select">
+      <option value="all">All Categories</option>
+      {% for c in categories %}
+      <option value="{{ c }}">{{ c.replace('_',' ').title() }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-md-3">
+    <select name="status" class="form-select">
+      <option value="all">All Status</option>
+      <option value="Pending">Pending</option>
+      <option value="In Progress">In Progress</option>
+      <option value="Resolved">Resolved</option>
+    </select>
+  </div>
+  <div class="col-md-3">
+    <select name="priority" class="form-select">
+      <option value="all">All Priorities</option>
+      <option value="High">High</option>
+      <option value="Medium">Medium</option>
+      <option value="Low">Low</option>
+    </select>
+  </div>
+  <div class="col-md-3">
+    <button class="btn btn-primary w-100">Filter</button>
+  </div>
+</form>
+
+<div class="row">
+  {% for r in reports %}
+  <div class="col-md-4 mb-4">
+    <div class="card report-card h-100">
+      {% if r.image_path %}
+      <img src="{{ url_for('static', filename=r.image_path) }}" class="card-img-top" alt="issue">
+      {% endif %}
+      <div class="card-body">
+        <h5 class="card-title text-capitalize">{{ r.category.replace('_',' ') }}</h5>
+        <p class="small text-muted mb-1">#{{ r.tracking_id }}</p>
+        <span class="badge bg-{{ 'danger' if r.priority_level=='High' else 'warning' if r.priority_level=='Medium' else 'secondary' }}">
+          {{ r.priority_level }}
+        </span>
+        <span class="badge bg-info text-dark">{{ r.status }}</span>
+        <p class="mt-2 small">{{ r.description or 'No description' }}</p>
+        <p class="small text-muted"><i class="fa-solid fa-location-dot"></i> {{ r.location_address or 'N/A' }}</p>
+        <p class="small text-muted">AI Confidence: {{ r.ai_confidence }}% | Severity: {{ r.severity_score }}</p>
+        <button class="btn btn-sm btn-outline-success upvote-btn" data-id="{{ r.id }}">
+          <i class="fa-solid fa-thumbs-up"></i> Upvote (<span class="count">{{ r.upvotes }}</span>)
+        </button>
+      </div>
+    </div>
+  </div>
+  {% else %}
+  <p>No reports found.</p>
+  {% endfor %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+fetch('/api/stats').then(r => r.json()).then(data => {
+  new Chart(document.getElementById('categoryChart'), {
+    type: 'bar',
+    data: {
+      labels: Object.keys(data.categories),
+      datasets: [{ label: 'Reports by Category', data: Object.values(data.categories),
+        backgroundColor: '#ffc107' }]
+    }
+  });
+  new Chart(document.getElementById('priorityChart'), {
+    type: 'doughnut',
+    data: {
+      labels: Object.keys(data.priorities),
+      datasets: [{ data: Object.values(data.priorities),
+        backgroundColor: ['#dc3545', '#fd7e14', '#6c757d'] }]
+    }
+  });
+});
+
+document.querySelectorAll('.upvote-btn').forEach(btn => {
+  btn.addEventListener('click', function(){
+    const id = this.dataset.id;
+    fetch(`/upvote/${id}`, {method: 'POST'})
+      .then(r => r.json())
+      .then(data => {
+        this.querySelector('.count').textContent = data.upvotes;
+      });
+  });
+});
+</script>
+{% endblock %}

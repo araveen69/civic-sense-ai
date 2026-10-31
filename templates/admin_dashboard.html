@@ -1,0 +1,65 @@
+{% extends 'base.html' %}
+{% block title %}Admin Dashboard{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h3><i class="fa-solid fa-gauge"></i> Admin Control Panel</h3>
+  <a href="{{ url_for('admin_logout') }}" class="btn btn-outline-danger btn-sm">Logout</a>
+</div>
+
+<div class="row text-center mb-4">
+  <div class="col-md-2 col-6 mb-2"><div class="stat-card"><h3>{{ stats.total }}</h3><p>Total</p></div></div>
+  <div class="col-md-2 col-6 mb-2"><div class="stat-card pending"><h3>{{ stats.pending }}</h3><p>Pending</p></div></div>
+  <div class="col-md-2 col-6 mb-2"><div class="stat-card progress"><h3>{{ stats.in_progress }}</h3><p>In Progress</p></div></div>
+  <div class="col-md-2 col-6 mb-2"><div class="stat-card resolved"><h3>{{ stats.resolved }}</h3><p>Resolved</p></div></div>
+  <div class="col-md-2 col-6 mb-2"><div class="stat-card high"><h3>{{ stats.high_priority }}</h3><p>High Priority</p></div></div>
+</div>
+
+<div class="table-responsive">
+<table class="table table-striped table-hover align-middle">
+  <thead class="table-dark">
+    <tr>
+      <th>ID</th><th>Image</th><th>Category</th><th>Priority</th>
+      <th>Severity</th><th>Department</th><th>Status</th><th>Reporter</th><th>Action</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in reports %}
+    <tr>
+      <td>{{ r.tracking_id }}</td>
+      <td>{% if r.image_path %}<img src="{{ url_for('static', filename=r.image_path) }}" width="60">{% endif %}</td>
+      <td class="text-capitalize">{{ r.category.replace('_',' ') }}</td>
+      <td><span class="badge bg-{{ 'danger' if r.priority_level=='High' else 'warning' if r.priority_level=='Medium' else 'secondary' }}">{{ r.priority_level }}</span></td>
+      <td>{{ r.severity_score }}</td>
+      <td>{{ r.assigned_department }}</td>
+      <td>
+        <select class="form-select form-select-sm status-select" data-id="{{ r.id }}">
+          <option {% if r.status=='Pending' %}selected{% endif %}>Pending</option>
+          <option {% if r.status=='In Progress' %}selected{% endif %}>In Progress</option>
+          <option {% if r.status=='Resolved' %}selected{% endif %}>Resolved</option>
+          <option {% if r.status=='Rejected' %}selected{% endif %}>Rejected</option>
+        </select>
+      </td>
+      <td>{{ r.reporter_name }}<br><small>{{ r.reporter_email }}</small></td>
+      <td><a href="{{ url_for('track_issue', tracking_id=r.tracking_id) }}" class="btn btn-sm btn-outline-info">View</a></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.querySelectorAll('.status-select').forEach(sel => {
+  sel.addEventListener('change', function(){
+    const id = this.dataset.id;
+    const status = this.value;
+    const formData = new FormData();
+    formData.append('status', status);
+    fetch(`/admin/update_status/${id}`, { method: 'POST', body: formData })
+      .then(r => r.json())
+      .then(data => { if(data.success) alert('Status updated to ' + data.status); });
+  });
+});
+</script>
+{% endblock %}
