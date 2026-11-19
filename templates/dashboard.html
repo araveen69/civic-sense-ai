@@ -23,10 +23,10 @@
   </div>
   <div class="col-md-3">
     <select name="status" class="form-select">
-      <option value="all">All Status</option>
-      <option value="Pending">Pending</option>
-      <option value="In Progress">In Progress</option>
-      <option value="Resolved">Resolved</option>
+      <option value="all" {% if request.args.get('status', 'all') == 'all' %}selected{% endif %}>All Status</option>
+      <option value="Pending" {% if request.args.get('status') == 'Pending' %}selected{% endif %}>Pending</option>
+      <option value="In Progress" {% if request.args.get('status') == 'In Progress' %}selected{% endif %}>In Progress</option>
+      <option value="Resolved" {% if request.args.get('status') == 'Resolved' %}selected{% endif %}>Resolved</option>
     </select>
   </div>
   <div class="col-md-3">
