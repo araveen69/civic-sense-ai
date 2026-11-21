@@ -24,20 +24,25 @@ geocoder = Nominatim(user_agent='civic-sense-ai', timeout=8)
 GEOCODE_CACHE = {}
 
 
-def geocode_address(address):
-    if not address:
+def geocode_address(address, description=''):
+    if not address and not description:
         return None, None
-    cache_key = address.strip().lower()
+    cache_key = f"{address or ''}|{description or ''}".strip().lower()
     if cache_key in GEOCODE_CACHE:
         return GEOCODE_CACHE[cache_key]
-    candidates = [address.strip()]
-    parts = [part.strip() for part in address.split(',') if part.strip()]
+    location_text = ' '.join(filter(None, [description.strip(), address.strip()]))
+    candidates = [
+        description.strip() if description else '',
+        address.strip() if address else '',
+        location_text,
+    ]
+    combined_text = f"{address or ''} {description or ''}".lower()
+    if 'silk board' in combined_text:
+        candidates.insert(0, 'Silk Board Junction, Bengaluru, Karnataka, India')
+    parts = [part.strip() for part in (address or '').split(',') if part.strip()]
     candidates.extend([
         ', '.join(parts[-2:]) if len(parts) >= 2 else '',
         parts[-1] if parts else '',
-        'Bengaluru, Karnataka, India' if any(
-            part.lower() in ('bengaluru', 'bangalore') for part in parts
-        ) else '',
     ])
     coordinates = (None, None)
     for candidate in dict.fromkeys(candidate for candidate in candidates if candidate):
@@ -71,6 +76,15 @@ def init_db():
             canonical_status = normalize_status(report.status)
             if report.status != canonical_status:
                 report.status = canonical_status
+            if (report.latitude is None or report.longitude is None or
+                    'silk board' in (report.description or '').lower()):
+                latitude, longitude = geocode_address(
+                    report.location_address,
+                    report.description
+                )
+                if latitude is not None and longitude is not None:
+                    report.latitude = latitude
+                    report.longitude = longitude
         db.session.commit()
         if not Admin.query.filter_by(username='admin').first():
             admin = Admin(
@@ -378,7 +392,10 @@ def api_reports_map():
         latitude = report.latitude
         longitude = report.longitude
         if latitude is None or longitude is None:
-            latitude, longitude = geocode_address(report.location_address)
+            latitude, longitude = geocode_address(
+                report.location_address,
+                report.description
+            )
         if latitude is not None and longitude is not None:
             data['latitude'] = latitude
             data['longitude'] = longitude
