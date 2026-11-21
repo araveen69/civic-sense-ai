@@ -7,11 +7,11 @@
 </div>
 
 <div class="row text-center mb-4">
-  <div class="col-md-2 col-6 mb-2"><div class="stat-card"><h3>{{ stats.total }}</h3><p>Total</p></div></div>
-  <div class="col-md-2 col-6 mb-2"><div class="stat-card pending"><h3>{{ stats.pending }}</h3><p>Pending</p></div></div>
-  <div class="col-md-2 col-6 mb-2"><div class="stat-card progress"><h3>{{ stats.in_progress }}</h3><p>In Progress</p></div></div>
-  <div class="col-md-2 col-6 mb-2"><div class="stat-card resolved"><h3>{{ stats.resolved }}</h3><p>Resolved</p></div></div>
-  <div class="col-md-2 col-6 mb-2"><div class="stat-card high"><h3>{{ stats.high_priority }}</h3><p>High Priority</p></div></div>
+  <div class="col-md-2 col-6 mb-2"><div class="stat-card"><h3 id="stat-total">{{ stats.total }}</h3><p>Total</p></div></div>
+  <div class="col-md-2 col-6 mb-2"><div class="stat-card pending"><h3 id="stat-pending">{{ stats.pending }}</h3><p>Pending</p></div></div>
+  <div class="col-md-2 col-6 mb-2"><div class="stat-card progress"><h3 id="stat-in-progress">{{ stats.in_progress }}</h3><p>In Progress</p></div></div>
+  <div class="col-md-2 col-6 mb-2"><div class="stat-card resolved"><h3 id="stat-resolved">{{ stats.resolved }}</h3><p>Resolved</p></div></div>
+  <div class="col-md-2 col-6 mb-2"><div class="stat-card high"><h3 id="stat-high-priority">{{ stats.high_priority }}</h3><p>High Priority</p></div></div>
 </div>
 
 <div class="table-responsive">
@@ -32,7 +32,7 @@
       <td>{{ r.severity_score }}</td>
       <td>{{ r.assigned_department }}</td>
       <td>
-        <select class="form-select form-select-sm status-select" data-id="{{ r.id }}">
+        <select class="form-select form-select-sm status-select" data-id="{{ r.id }}" data-current-status="{{ r.status }}">
           <option {% if r.status=='Pending' %}selected{% endif %}>Pending</option>
           <option {% if r.status=='In Progress' %}selected{% endif %}>In Progress</option>
           <option {% if r.status=='Resolved' %}selected{% endif %}>Resolved</option>
@@ -40,7 +40,15 @@
         </select>
       </td>
       <td>{{ r.reporter_name }}<br><small>{{ r.reporter_email }}</small></td>
-      <td><a href="{{ url_for('track_issue', tracking_id=r.tracking_id) }}" class="btn btn-sm btn-outline-info">View</a></td>
+      <td>
+        <a href="{{ url_for('track_issue', tracking_id=r.tracking_id) }}" class="btn btn-sm btn-outline-info">View</a>
+        <button type="button"
+                class="btn btn-sm btn-outline-danger delete-complaint"
+                data-id="{{ r.id }}"
+                data-tracking-id="{{ r.tracking_id }}">
+          Delete
+        </button>
+      </td>
     </tr>
     {% endfor %}
   </tbody>
@@ -54,11 +62,78 @@ document.querySelectorAll('.status-select').forEach(sel => {
   sel.addEventListener('change', function(){
     const id = this.dataset.id;
     const status = this.value;
+    const previousStatus = this.dataset.currentStatus || 'Pending';
     const formData = new FormData();
     formData.append('status', status);
     fetch(`/admin/update_status/${id}`, { method: 'POST', body: formData })
       .then(r => r.json())
-      .then(data => { if(data.success) alert('Status updated to ' + data.status); });
+      .then(data => {
+        if (data.success) {
+          const statIds = {
+            'Pending': 'stat-pending',
+            'In Progress': 'stat-in-progress',
+            'Resolved': 'stat-resolved'
+          };
+          const previousElement = document.getElementById(statIds[previousStatus]);
+          const newElement = document.getElementById(statIds[data.status]);
+          if (previousElement && previousStatus !== data.status) {
+            previousElement.textContent = Math.max(0, Number(previousElement.textContent) - 1);
+          }
+          if (newElement && previousStatus !== data.status) {
+            newElement.textContent = Number(newElement.textContent) + 1;
+          }
+          this.dataset.currentStatus = data.status;
+        } else {
+          this.value = previousStatus;
+          alert(data.error || 'Unable to update status.');
+        }
+      })
+      .catch(() => {
+        this.value = previousStatus;
+        alert('Unable to update status.');
+      });
+  });
+});
+
+document.querySelectorAll('.delete-complaint').forEach(button => {
+  button.addEventListener('click', function() {
+    const trackingId = this.dataset.trackingId;
+    if (!confirm(`Delete complaint #${trackingId}? This action cannot be undone.`)) {
+      return;
+    }
+
+    fetch(`/admin/delete_complaint/${this.dataset.id}`, { method: 'POST' })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          const row = this.closest('tr');
+          const status = row.querySelector('.status-select').value;
+          const priorityBadge = row.querySelector('td:nth-child(4) .badge');
+          const priority = priorityBadge ? priorityBadge.textContent.trim() : '';
+          row.remove();
+
+          const total = document.getElementById('stat-total');
+          total.textContent = Math.max(0, Number(total.textContent) - 1);
+
+          if (status === 'Pending') {
+            document.getElementById('stat-pending').textContent =
+              Math.max(0, Number(document.getElementById('stat-pending').textContent) - 1);
+          } else if (status === 'In Progress') {
+            document.getElementById('stat-in-progress').textContent =
+              Math.max(0, Number(document.getElementById('stat-in-progress').textContent) - 1);
+          } else if (status === 'Resolved') {
+            document.getElementById('stat-resolved').textContent =
+              Math.max(0, Number(document.getElementById('stat-resolved').textContent) - 1);
+          }
+          if (priority === 'High') {
+            document.getElementById('stat-high-priority').textContent =
+              Math.max(0, Number(document.getElementById('stat-high-priority').textContent) - 1);
+          }
+        } else {
+          alert(data.error || 'Unable to delete complaint.');
+        }
+      })
+      .catch(() => alert('Unable to delete complaint.'));
   });
 });
 </script>

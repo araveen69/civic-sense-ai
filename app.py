@@ -17,11 +17,29 @@ app.config.from_object(Config)
 db.init_app(app)
 
 DUPLICATE_RADIUS_METERS = 50
+VALID_STATUSES = ('Pending', 'In Progress', 'Resolved', 'Rejected')
+
+
+def normalize_status(status):
+    if not status:
+        return 'Pending'
+    normalized = ' '.join(status.strip().replace('_', ' ').replace('-', ' ').split()).lower()
+    return {
+        'pending': 'Pending',
+        'in progress': 'In Progress',
+        'resolved': 'Resolved',
+        'rejected': 'Rejected',
+    }.get(normalized, 'Pending')
 
 
 def init_db():
     with app.app_context():
         db.create_all()
+        for report in Report.query.all():
+            canonical_status = normalize_status(report.status)
+            if report.status != canonical_status:
+                report.status = canonical_status
+        db.session.commit()
         if not Admin.query.filter_by(username='admin').first():
             admin = Admin(
                 username='admin',
@@ -162,7 +180,7 @@ def dashboard():
     if category_filter != 'all':
         query = query.filter_by(category=category_filter)
     if status_filter != 'all':
-        query = query.filter_by(status=status_filter)
+        query = query.filter_by(status=normalize_status(status_filter))
     if priority_filter != 'all':
         query = query.filter_by(priority_level=priority_filter)
 
@@ -213,7 +231,7 @@ def admin_dashboard():
     status_filter = request.args.get('status', 'all')
     query = Report.query
     if status_filter != 'all':
-        query = query.filter_by(status=status_filter)
+        query = query.filter_by(status=normalize_status(status_filter))
 
     reports = query.order_by(Report.severity_score.desc()).all()
 
@@ -233,10 +251,12 @@ def update_status(report_id):
         return jsonify({'error': 'unauthorized'}), 401
 
     report = Report.query.get_or_404(report_id)
-    new_status = request.form.get('status')
+    new_status = normalize_status(request.form.get('status'))
     report.status = new_status
     if new_status == 'Resolved':
         report.resolved_at = datetime.utcnow()
+    else:
+        report.resolved_at = None
 
     db.session.commit()
 
@@ -248,6 +268,43 @@ def update_status(report_id):
     notify_citizen(report.reporter_email, report.tracking_id, new_status)
 
     return jsonify({'success': True, 'status': new_status})
+
+
+@app.route('/admin/delete_complaint/<int:report_id>', methods=['POST'])
+def delete_complaint(report_id):
+    if 'admin_id' not in session:
+        return jsonify({'error': 'unauthorized'}), 401
+
+    report = Report.query.get_or_404(report_id)
+    tracking_id = report.tracking_id
+    image_path = report.image_path
+
+    # Preserve a deletion audit entry after removing report-specific logs.
+    deletion_log = ActivityLog(
+        report_id=None,
+        action=f'Complaint #{tracking_id} deleted',
+        performed_by=session.get('admin_name', 'Admin')
+    )
+    db.session.add(deletion_log)
+
+    ActivityLog.query.filter_by(report_id=report.id).delete(synchronize_session=False)
+    Report.query.filter_by(duplicate_of=report.id).update(
+        {Report.duplicate_of: None},
+        synchronize_session=False
+    )
+    db.session.delete(report)
+    db.session.commit()
+
+    if image_path:
+        image_filename = os.path.basename(image_path)
+        image_full_path = os.path.join(Config.UPLOAD_FOLDER, image_filename)
+        if os.path.isfile(image_full_path):
+            try:
+                os.remove(image_full_path)
+            except OSError:
+                app.logger.warning('Unable to delete uploaded image: %s', image_full_path)
+
+    return jsonify({'success': True, 'tracking_id': tracking_id})
 
 
 @app.route('/api/stats')
