@@ -3,6 +3,7 @@ from datetime import datetime
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session
 from werkzeug.security import generate_password_hash, check_password_hash
 from geopy.distance import geodesic
+from geopy.geocoders import Nominatim
 
 from config import Config
 from models.db_models import db, Report, Admin, ActivityLog
@@ -18,6 +19,42 @@ db.init_app(app)
 
 DUPLICATE_RADIUS_METERS = 50
 VALID_STATUSES = ('Pending', 'In Progress', 'Resolved', 'Rejected')
+
+geocoder = Nominatim(user_agent='civic-sense-ai', timeout=8)
+GEOCODE_CACHE = {}
+
+
+def geocode_address(address, description=''):
+    if not address and not description:
+        return None, None
+    cache_key = f"{address or ''}|{description or ''}".strip().lower()
+    if cache_key in GEOCODE_CACHE:
+        return GEOCODE_CACHE[cache_key]
+    location_text = ' '.join(filter(None, [description.strip(), address.strip()]))
+    candidates = [
+        description.strip() if description else '',
+        address.strip() if address else '',
+        location_text,
+    ]
+    combined_text = f"{address or ''} {description or ''}".lower()
+    if 'silk board' in combined_text:
+        candidates.insert(0, 'Silk Board Junction, Bengaluru, Karnataka, India')
+    parts = [part.strip() for part in (address or '').split(',') if part.strip()]
+    candidates.extend([
+        ', '.join(parts[-2:]) if len(parts) >= 2 else '',
+        parts[-1] if parts else '',
+    ])
+    coordinates = (None, None)
+    for candidate in dict.fromkeys(candidate for candidate in candidates if candidate):
+        try:
+            location = geocoder.geocode(candidate)
+            if location:
+                coordinates = (location.latitude, location.longitude)
+                break
+        except Exception:
+            continue
+    GEOCODE_CACHE[cache_key] = coordinates
+    return coordinates
 
 
 def normalize_status(status):
@@ -39,6 +76,15 @@ def init_db():
             canonical_status = normalize_status(report.status)
             if report.status != canonical_status:
                 report.status = canonical_status
+            if (report.latitude is None or report.longitude is None or
+                    'silk board' in (report.description or '').lower()):
+                latitude, longitude = geocode_address(
+                    report.location_address,
+                    report.description
+                )
+                if latitude is not None and longitude is not None:
+                    report.latitude = latitude
+                    report.longitude = longitude
         db.session.commit()
         if not Admin.query.filter_by(username='admin').first():
             admin = Admin(
@@ -93,6 +139,8 @@ def report_issue():
 
         lat = float(lat) if lat else None
         lon = float(lon) if lon else None
+        if (lat is None or lon is None) and address:
+            lat, lon = geocode_address(address)
 
         image_file = request.files.get('image')
         image_rel_path = save_uploaded_image(image_file) if image_file else None
@@ -321,6 +369,39 @@ def api_stats():
     }
 
     return jsonify({'categories': categories, 'priorities': priorities})
+
+
+@app.route('/api/reports/map')
+def api_reports_map():
+    """Return geolocated reports, optionally filtered with dashboard query parameters."""
+    category_filter = request.args.get('category', 'all')
+    status_filter = request.args.get('status', 'all')
+    priority_filter = request.args.get('priority', 'all')
+
+    query = Report.query
+    if category_filter != 'all':
+        query = query.filter_by(category=category_filter)
+    if status_filter != 'all':
+        query = query.filter_by(status=normalize_status(status_filter))
+    if priority_filter != 'all':
+        query = query.filter_by(priority_level=priority_filter)
+
+    reports = []
+    for report in query.order_by(Report.created_at.desc()).all():
+        data = report.to_dict()
+        latitude = report.latitude
+        longitude = report.longitude
+        if latitude is None or longitude is None:
+            latitude, longitude = geocode_address(
+                report.location_address,
+                report.description
+            )
+        if latitude is not None and longitude is not None:
+            data['latitude'] = latitude
+            data['longitude'] = longitude
+            reports.append(data)
+
+    return jsonify({'reports': reports})
 
 
 if __name__ == '__main__':
