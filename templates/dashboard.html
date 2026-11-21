@@ -52,10 +52,17 @@
       <span class="section-kicker">LOCATION VIEW</span>
       <h4>Interactive Issue Map</h4>
     </div>
-    <div class="map-legend" aria-label="Map priority legend">
-      <span><i class="legend-dot high"></i> High</span>
-      <span><i class="legend-dot medium"></i> Medium</span>
-      <span><i class="legend-dot low"></i> Low</span>
+    <div class="map-toolbar">
+      <span class="map-result-count" id="mapResultCount">Loading...</span>
+      <button type="button" class="map-locate-button" id="locateMap" aria-label="Locate me">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+        Near me
+      </button>
+      <div class="map-legend" aria-label="Map priority legend">
+        <span><i class="legend-dot high"></i> High</span>
+        <span><i class="legend-dot medium"></i> Medium</span>
+        <span><i class="legend-dot low"></i> Low</span>
+      </div>
     </div>
   </div>
   <div id="issueMap" aria-label="Map of civic issue locations">
@@ -94,10 +101,8 @@
 {% endblock %}
 
 {% block scripts %}
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-      integrity="sha256-p4NxAoJBhIINfQ3ynJY8a8Yk6KdzJEH0X9gELC2A5pQ=" crossorigin="">
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 fetch('/api/stats').then(r => r.json()).then(data => {
   new Chart(document.getElementById('categoryChart'), {
@@ -175,6 +180,10 @@ fetch(`/api/reports/map${mapQuery}`)
   .then(response => response.json())
   .then(data => {
     const markers = [];
+    const mapResultCount = document.getElementById('mapResultCount');
+    if (mapResultCount) {
+      mapResultCount.textContent = `${data.reports.length} ${data.reports.length === 1 ? 'issue' : 'issues'}`;
+    }
     data.reports.forEach(report => {
       const latitude = Number(report.latitude);
       const longitude = Number(report.longitude);
@@ -213,15 +222,53 @@ fetch(`/api/reports/map${mapQuery}`)
     if (markers.length) {
       const bounds = L.featureGroup(markers).getBounds();
       issueMap.fitBounds(bounds.pad(0.25), { maxZoom: 13 });
+    } else {
+      issueMap.setView([20.5937, 78.9629], 5);
+      issueMapElement.insertAdjacentHTML(
+        'beforeend',
+        '<div class="map-empty-state">No mapped issues match these filters.</div>'
+      );
     }
   })
   .catch(() => {
     issueMapElement.querySelector('.map-loading')?.remove();
+    const mapResultCount = document.getElementById('mapResultCount');
+    if (mapResultCount) mapResultCount.textContent = 'Map unavailable';
     issueMapElement.insertAdjacentHTML(
       'beforeend',
       '<div class="map-loading">Unable to load issue locations.</div>'
     );
   });
+
+document.getElementById('locateMap')?.addEventListener('click', function () {
+  if (!navigator.geolocation) {
+    alert('Location access is not supported by your browser.');
+    return;
+  }
+  this.disabled = true;
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      issueMap.setView(
+        [position.coords.latitude, position.coords.longitude],
+        13,
+        { animate: true }
+      );
+      L.circleMarker([position.coords.latitude, position.coords.longitude], {
+        radius: 7,
+        color: '#ffffff',
+        weight: 3,
+        fillColor: '#2563eb',
+        fillOpacity: 1
+      }).addTo(issueMap).bindPopup('Your location');
+      this.disabled = false;
+    },
+    () => {
+      alert('We could not access your location.');
+      this.disabled = false;
+    },
+    { enableHighAccuracy: true, timeout: 10000 }
+  );
+});
 }
 </script>
 {% endblock %}

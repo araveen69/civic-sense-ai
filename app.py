@@ -3,6 +3,7 @@ from datetime import datetime
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session
 from werkzeug.security import generate_password_hash, check_password_hash
 from geopy.distance import geodesic
+from geopy.geocoders import Nominatim
 
 from config import Config
 from models.db_models import db, Report, Admin, ActivityLog
@@ -18,6 +19,37 @@ db.init_app(app)
 
 DUPLICATE_RADIUS_METERS = 50
 VALID_STATUSES = ('Pending', 'In Progress', 'Resolved', 'Rejected')
+
+geocoder = Nominatim(user_agent='civic-sense-ai', timeout=8)
+GEOCODE_CACHE = {}
+
+
+def geocode_address(address):
+    if not address:
+        return None, None
+    cache_key = address.strip().lower()
+    if cache_key in GEOCODE_CACHE:
+        return GEOCODE_CACHE[cache_key]
+    candidates = [address.strip()]
+    parts = [part.strip() for part in address.split(',') if part.strip()]
+    candidates.extend([
+        ', '.join(parts[-2:]) if len(parts) >= 2 else '',
+        parts[-1] if parts else '',
+        'Bengaluru, Karnataka, India' if any(
+            part.lower() in ('bengaluru', 'bangalore') for part in parts
+        ) else '',
+    ])
+    coordinates = (None, None)
+    for candidate in dict.fromkeys(candidate for candidate in candidates if candidate):
+        try:
+            location = geocoder.geocode(candidate)
+            if location:
+                coordinates = (location.latitude, location.longitude)
+                break
+        except Exception:
+            continue
+    GEOCODE_CACHE[cache_key] = coordinates
+    return coordinates
 
 
 def normalize_status(status):
@@ -93,6 +125,8 @@ def report_issue():
 
         lat = float(lat) if lat else None
         lon = float(lon) if lon else None
+        if (lat is None or lon is None) and address:
+            lat, lon = geocode_address(address)
 
         image_file = request.files.get('image')
         image_rel_path = save_uploaded_image(image_file) if image_file else None
@@ -330,10 +364,7 @@ def api_reports_map():
     status_filter = request.args.get('status', 'all')
     priority_filter = request.args.get('priority', 'all')
 
-    query = Report.query.filter(
-        Report.latitude.isnot(None),
-        Report.longitude.isnot(None)
-    )
+    query = Report.query
     if category_filter != 'all':
         query = query.filter_by(category=category_filter)
     if status_filter != 'all':
@@ -341,11 +372,19 @@ def api_reports_map():
     if priority_filter != 'all':
         query = query.filter_by(priority_level=priority_filter)
 
-    return jsonify({
-        'reports': [report.to_dict() for report in query.order_by(
-            Report.created_at.desc()
-        ).all()]
-    })
+    reports = []
+    for report in query.order_by(Report.created_at.desc()).all():
+        data = report.to_dict()
+        latitude = report.latitude
+        longitude = report.longitude
+        if latitude is None or longitude is None:
+            latitude, longitude = geocode_address(report.location_address)
+        if latitude is not None and longitude is not None:
+            data['latitude'] = latitude
+            data['longitude'] = longitude
+            reports.append(data)
+
+    return jsonify({'reports': reports})
 
 
 if __name__ == '__main__':
