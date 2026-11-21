@@ -1,39 +1,33 @@
 {% extends 'base.html' %}
 {% block title %}Home - CivicSense AI{% endblock %}
 {% block content %}
-<div class="hero text-center p-5 rounded mb-5">
-  <h1 class="display-5 fw-bold">Report Civic Issues. Get AI-Powered Solutions.</h1>
-  <p class="lead">Upload a photo. Our AI detects the issue, assesses severity, and routes it to the right department instantly.</p>
-  <a href="{{ url_for('report_issue') }}" class="btn btn-warning btn-lg mt-3 px-4">
-    <i class="fa-solid fa-camera"></i> Report an Issue Now
-  </a>
-</div>
-
-<div class="row text-center mb-5">
-  <div class="col-md-3 col-6 mb-3">
-    <div class="stat-card">
-      <h2>{{ total }}</h2><p>Total Reports</p>
-    </div>
+<div class="hero mb-4">
+  <div class="hero-content">
+    <span class="hero-eyebrow">SMART COMMUNITY REPORTING</span>
+    <h1>Report issues.<br>Build a better city.</h1>
+    <p>Upload a photo and let our AI detect, prioritize, and route civic issues to the right department.</p>
+    <a href="{{ url_for('report_issue') }}" class="btn hero-button">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7l1.5-2h3L15 7h3a2 2 0 012 2v8H4V9a2 2 0 012-2h3z"/><circle cx="12" cy="13" r="3"/></svg>
+      Report an Issue
+    </a>
   </div>
-  <div class="col-md-3 col-6 mb-3">
-    <div class="stat-card pending">
-      <h2>{{ pending }}</h2><p>Pending</p>
-    </div>
-  </div>
-  <div class="col-md-3 col-6 mb-3">
-    <div class="stat-card progress">
-      <h2>{{ in_progress }}</h2><p>In Progress</p>
-    </div>
-  </div>
-  <div class="col-md-3 col-6 mb-3">
-    <div class="stat-card resolved">
-      <h2>{{ resolved }}</h2><p>Resolved</p>
-    </div>
+  <div class="hero-decoration" aria-hidden="true">
+    <svg viewBox="0 0 24 24"><path d="M3 21V8l9-5 9 5v13M7 21v-8h10v8M7 10h.01M12 10h.01M17 10h.01M7 16h.01M17 16h.01"/></svg>
   </div>
 </div>
 
-<h3 class="mb-3">Recent Reports</h3>
-<div class="row">
+<div class="stats-grid mb-5">
+  <div class="stat-card"><div class="stat-icon blue"><svg viewBox="0 0 24 24"><path d="M8 6h11M8 12h11M8 18h11M4 6h.01M4 12h.01M4 18h.01"/></svg></div><div><h2>{{ total }}</h2><p>Total Reports</p></div></div>
+  <div class="stat-card pending"><div class="stat-icon orange"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg></div><div><h2>{{ pending }}</h2><p>Pending</p></div></div>
+  <div class="stat-card progress"><div class="stat-icon cyan"><svg viewBox="0 0 24 24"><path d="M4 17l4-4 3 3 5-7 4 3M20 8v4h-4"/></svg></div><div><h2>{{ in_progress }}</h2><p>In Progress</p></div></div>
+  <div class="stat-card resolved"><div class="stat-icon green"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M8 12l3 3 5-6"/></svg></div><div><h2>{{ resolved }}</h2><p>Resolved</p></div></div>
+</div>
+
+<div class="section-heading">
+  <div><span class="section-kicker">COMMUNITY UPDATES</span><h3>Recent Reports</h3></div>
+  <a href="{{ url_for('dashboard') }}" class="view-all-link">View dashboard <span aria-hidden="true">→</span></a>
+</div>
+<div class="row g-4">
   {% for r in recent %}
   <div class="col-md-4 mb-4">
     <div class="card report-card h-100">

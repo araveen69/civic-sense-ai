@@ -1,18 +1,19 @@
 {% extends 'base.html' %}
 {% block title %}Public Dashboard{% endblock %}
 {% block content %}
-<h3 class="mb-4"><i class="fa-solid fa-chart-line"></i> Public Issue Dashboard</h3>
-
-<div class="row mb-4">
-  <div class="col-md-6">
-    <canvas id="categoryChart"></canvas>
-  </div>
-  <div class="col-md-6">
-    <canvas id="priorityChart"></canvas>
+<div class="page-heading mb-4">
+  <div>
+    <span class="section-kicker">COMMUNITY INSIGHTS</span>
+    <h3>Public Issue Dashboard</h3>
   </div>
 </div>
 
-<form method="GET" class="row g-2 mb-4">
+<div class="chart-grid mb-4">
+  <div class="chart-card"><div class="chart-card-heading"><span>Reports by category</span></div><canvas id="categoryChart"></canvas></div>
+  <div class="chart-card"><div class="chart-card-heading"><span>Priority overview</span></div><canvas id="priorityChart"></canvas></div>
+</div>
+
+<form method="GET" class="filter-panel row g-2 mb-4">
   <div class="col-md-3">
     <select name="category" class="form-select">
       <option value="all">All Categories</option>
@@ -37,8 +38,11 @@
       <option value="Low">Low</option>
     </select>
   </div>
-  <div class="col-md-3">
-    <button class="btn btn-primary w-100">Filter</button>
+  <div class="col-md-3 d-grid">
+    <button class="btn filter-button">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16M7 12h10M10 19h4"/></svg>
+      Apply Filters
+    </button>
   </div>
 </form>
 
@@ -57,10 +61,11 @@
         </span>
         <span class="badge bg-info text-dark">{{ r.status }}</span>
         <p class="mt-2 small">{{ r.description or 'No description' }}</p>
-        <p class="small text-muted"><i class="fa-solid fa-location-dot"></i> {{ r.location_address or 'N/A' }}</p>
+        <p class="small text-muted"><svg viewBox="0 0 24 24" aria-hidden="true" style="width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;vertical-align:-2px"><path d="M12 21s6-5.3 6-12a6 6 0 10-12 0c0 6.7 6 12 6 12z"/><circle cx="12" cy="9" r="2"/></svg> {{ r.location_address or 'N/A' }}</p>
         <p class="small text-muted">AI Confidence: {{ r.ai_confidence }}% | Severity: {{ r.severity_score }}</p>
         <button class="btn btn-sm btn-outline-success upvote-btn" data-id="{{ r.id }}">
-          <i class="fa-solid fa-thumbs-up"></i> Upvote (<span class="count">{{ r.upvotes }}</span>)
+          <svg viewBox="0 0 24 24" aria-hidden="true" style="width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;vertical-align:-3px"><path d="M7 10v10H3V10h4zm0 9h10l3-8V9h-7l1-5-4 1-3 5"/></svg>
+          Upvote (<span class="count">{{ r.upvotes }}</span>)
         </button>
       </div>
     </div>
@@ -79,7 +84,15 @@ fetch('/api/stats').then(r => r.json()).then(data => {
     data: {
       labels: Object.keys(data.categories),
       datasets: [{ label: 'Reports by Category', data: Object.values(data.categories),
-        backgroundColor: '#ffc107' }]
+        backgroundColor: '#2563eb', borderRadius: 6, maxBarThickness: 38 }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: '#667085', font: { size: 11 } } },
+        y: { beginAtZero: true, grid: { color: '#edf0f5' }, ticks: { precision: 0, color: '#667085' } }
+      }
     }
   });
   new Chart(document.getElementById('priorityChart'), {
@@ -87,7 +100,13 @@ fetch('/api/stats').then(r => r.json()).then(data => {
     data: {
       labels: Object.keys(data.priorities),
       datasets: [{ data: Object.values(data.priorities),
-        backgroundColor: ['#dc3545', '#fd7e14', '#6c757d'] }]
+        backgroundColor: ['#ef4444', '#f59e0b', '#64748b'],
+        borderWidth: 5, borderColor: '#ffffff', hoverOffset: 5 }]
+    },
+    options: {
+      responsive: true,
+      cutout: '68%',
+      plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8, padding: 16 } } }
     }
   });
 });

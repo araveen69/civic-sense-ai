@@ -4,7 +4,7 @@
 <div class="row justify-content-center">
   <div class="col-lg-8">
     <div class="card shadow p-4">
-      <h3 class="mb-4"><i class="fa-solid fa-triangle-exclamation text-warning"></i> Report a Civic Issue</h3>
+      <h3 class="mb-4"><span class="text-warning" aria-hidden="true">⚠</span> Report a Civic Issue</h3>
       <form method="POST" enctype="multipart/form-data" id="reportForm">
         <div class="row">
           <div class="col-md-6 mb-3">
@@ -60,12 +60,14 @@
           </div>
         </div>
         <button type="button" class="btn btn-outline-primary mb-3" onclick="getLocation()">
-          <i class="fa-solid fa-location-dot"></i> Use Current Location
+          <svg viewBox="0 0 24 24" aria-hidden="true" style="width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;vertical-align:-3px"><path d="M12 21s6-5.3 6-12a6 6 0 10-12 0c0 6.7 6 12 6 12z"/><circle cx="12" cy="9" r="2"/></svg>
+          Use Current Location
         </button>
 
         <div class="d-grid">
           <button type="submit" class="btn btn-warning btn-lg">
-            <i class="fa-solid fa-paper-plane"></i> Submit Report (AI will analyze)
+            <svg viewBox="0 0 24 24" aria-hidden="true" style="width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:2;vertical-align:-3px"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+            Submit Report (AI will analyze)
           </button>
         </div>
       </form>
