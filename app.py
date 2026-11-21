@@ -323,6 +323,31 @@ def api_stats():
     return jsonify({'categories': categories, 'priorities': priorities})
 
 
+@app.route('/api/reports/map')
+def api_reports_map():
+    """Return geolocated reports, optionally filtered with dashboard query parameters."""
+    category_filter = request.args.get('category', 'all')
+    status_filter = request.args.get('status', 'all')
+    priority_filter = request.args.get('priority', 'all')
+
+    query = Report.query.filter(
+        Report.latitude.isnot(None),
+        Report.longitude.isnot(None)
+    )
+    if category_filter != 'all':
+        query = query.filter_by(category=category_filter)
+    if status_filter != 'all':
+        query = query.filter_by(status=normalize_status(status_filter))
+    if priority_filter != 'all':
+        query = query.filter_by(priority_level=priority_filter)
+
+    return jsonify({
+        'reports': [report.to_dict() for report in query.order_by(
+            Report.created_at.desc()
+        ).all()]
+    })
+
+
 if __name__ == '__main__':
     init_db()
     app.run(debug=True)

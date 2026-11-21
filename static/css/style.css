@@ -243,6 +243,53 @@ body {
 
 .upvote-btn { border-radius: 8px; }
 
+.issue-map-card {
+    overflow: hidden;
+    border: 1px solid #edf0f5;
+    border-radius: 14px;
+    background: #fff;
+    box-shadow: 0 8px 24px rgba(31,45,74,.05);
+}
+.issue-map-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 20px;
+}
+.issue-map-heading h4 { margin: 4px 0 0; font-size: 18px; font-weight: 700; }
+.issue-map-heading .section-kicker { color: #7891b7; }
+.map-legend { display: flex; gap: 14px; color: #667085; font-size: 12px; font-weight: 600; }
+.legend-dot {
+    display: inline-block;
+    width: 9px;
+    height: 9px;
+    margin-right: 5px;
+    border-radius: 50%;
+}
+.legend-dot.high { background: #ef4444; }
+.legend-dot.medium { background: #f59e0b; }
+.legend-dot.low { background: #64748b; }
+#issueMap {
+    height: 430px;
+    background: #eef2f7;
+}
+.map-loading {
+    display: grid;
+    height: 100%;
+    place-items: center;
+    color: #667085;
+    font-size: 13px;
+}
+.map-popup { min-width: 220px; }
+.map-popup-image { width: 220px; height: 110px; object-fit: cover; border-radius: 7px 7px 0 0; }
+.map-popup-body { display: flex; flex-direction: column; gap: 3px; padding: 9px 2px 2px; }
+.map-popup-id { color: #667085; font-size: 11px; }
+.map-popup-body strong { text-transform: capitalize; font-size: 14px; }
+.map-popup-meta { color: #475569; font-size: 12px; }
+.map-popup-body small { max-width: 220px; color: #667085; }
+.map-popup-body a { margin-top: 5px; color: #2563eb; font-size: 12px; font-weight: 700; text-decoration: none; }
+.leaflet-popup-content { margin: 8px; }
+
 .admin-toolbar {
     display: flex;
     justify-content: space-between;
@@ -283,4 +330,6 @@ body {
     .stat-card { min-height: 92px; padding: 14px; }
     .stat-icon { width: 40px; height: 40px; flex-basis: 40px; }
     .stat-card h2 { font-size: 24px; }
+    .issue-map-heading { align-items: flex-start; flex-direction: column; gap: 10px; }
+    #issueMap { height: 360px; }
 }

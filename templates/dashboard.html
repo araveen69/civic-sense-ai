@@ -18,7 +18,7 @@
     <select name="category" class="form-select">
       <option value="all">All Categories</option>
       {% for c in categories %}
-      <option value="{{ c }}">{{ c.replace('_',' ').title() }}</option>
+      <option value="{{ c }}" {% if request.args.get('category') == c %}selected{% endif %}>{{ c.replace('_',' ').title() }}</option>
       {% endfor %}
     </select>
   </div>
@@ -32,10 +32,10 @@
   </div>
   <div class="col-md-3">
     <select name="priority" class="form-select">
-      <option value="all">All Priorities</option>
-      <option value="High">High</option>
-      <option value="Medium">Medium</option>
-      <option value="Low">Low</option>
+      <option value="all" {% if request.args.get('priority', 'all') == 'all' %}selected{% endif %}>All Priorities</option>
+      <option value="High" {% if request.args.get('priority') == 'High' %}selected{% endif %}>High</option>
+      <option value="Medium" {% if request.args.get('priority') == 'Medium' %}selected{% endif %}>Medium</option>
+      <option value="Low" {% if request.args.get('priority') == 'Low' %}selected{% endif %}>Low</option>
     </select>
   </div>
   <div class="col-md-3 d-grid">
@@ -45,6 +45,23 @@
     </button>
   </div>
 </form>
+
+<section class="issue-map-card mb-4">
+  <div class="issue-map-heading">
+    <div>
+      <span class="section-kicker">LOCATION VIEW</span>
+      <h4>Interactive Issue Map</h4>
+    </div>
+    <div class="map-legend" aria-label="Map priority legend">
+      <span><i class="legend-dot high"></i> High</span>
+      <span><i class="legend-dot medium"></i> Medium</span>
+      <span><i class="legend-dot low"></i> Low</span>
+    </div>
+  </div>
+  <div id="issueMap" aria-label="Map of civic issue locations">
+    <div class="map-loading">Loading issue locations...</div>
+  </div>
+</section>
 
 <div class="row">
   {% for r in reports %}
@@ -77,6 +94,10 @@
 {% endblock %}
 
 {% block scripts %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIINfQ3ynJY8a8Yk6KdzJEH0X9gELC2A5pQ=" crossorigin="">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <script>
 fetch('/api/stats').then(r => r.json()).then(data => {
   new Chart(document.getElementById('categoryChart'), {
@@ -121,5 +142,86 @@ document.querySelectorAll('.upvote-btn').forEach(btn => {
       });
   });
 });
+
+const issueMapElement = document.getElementById('issueMap');
+if (typeof L === 'undefined') {
+  issueMapElement.innerHTML = '<div class="map-loading">Map library could not be loaded.</div>';
+} else {
+const issueMap = L.map(issueMapElement, {
+  scrollWheelZoom: false,
+  zoomControl: true
+}).setView([20.5937, 78.9629], 5);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 19,
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+}).addTo(issueMap);
+
+const priorityColors = {
+  High: '#ef4444',
+  Medium: '#f59e0b',
+  Low: '#64748b'
+};
+
+const escapeHtml = (value) => String(value ?? '')
+  .replaceAll('&', '&amp;')
+  .replaceAll('<', '&lt;')
+  .replaceAll('>', '&gt;')
+  .replaceAll('"', '&quot;')
+  .replaceAll("'", '&#039;');
+
+const mapQuery = window.location.search || '';
+fetch(`/api/reports/map${mapQuery}`)
+  .then(response => response.json())
+  .then(data => {
+    const markers = [];
+    data.reports.forEach(report => {
+      const latitude = Number(report.latitude);
+      const longitude = Number(report.longitude);
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
+
+      const priority = report.priority_level || 'Low';
+      const marker = L.circleMarker([latitude, longitude], {
+        radius: 9,
+        color: '#ffffff',
+        weight: 2,
+        fillColor: priorityColors[priority] || priorityColors.Low,
+        fillOpacity: 0.92
+      }).addTo(issueMap);
+
+      const imageHtml = report.image_path
+        ? `<img class="map-popup-image" src="/static/${escapeHtml(report.image_path)}" alt="Issue image">`
+        : '';
+      const category = escapeHtml(report.category.replaceAll('_', ' '));
+      const address = escapeHtml(report.location_address || 'Location not specified');
+      marker.bindPopup(`
+        <div class="map-popup">
+          ${imageHtml}
+          <div class="map-popup-body">
+            <span class="map-popup-id">#${escapeHtml(report.tracking_id)}</span>
+            <strong>${category}</strong>
+            <div class="map-popup-meta">${escapeHtml(report.status)} · ${escapeHtml(priority)} priority</div>
+            <small>${address}</small>
+            <a href="/track/${encodeURIComponent(report.tracking_id)}">View issue</a>
+          </div>
+        </div>
+      `);
+      markers.push(marker);
+    });
+
+    issueMapElement.querySelector('.map-loading')?.remove();
+    if (markers.length) {
+      const bounds = L.featureGroup(markers).getBounds();
+      issueMap.fitBounds(bounds.pad(0.25), { maxZoom: 13 });
+    }
+  })
+  .catch(() => {
+    issueMapElement.querySelector('.map-loading')?.remove();
+    issueMapElement.insertAdjacentHTML(
+      'beforeend',
+      '<div class="map-loading">Unable to load issue locations.</div>'
+    );
+  });
+}
 </script>
 {% endblock %}
