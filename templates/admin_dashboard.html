@@ -3,7 +3,10 @@
 {% block content %}
 <div class="admin-toolbar mb-4">
   <div class="page-heading"><div><span class="section-kicker">CONTROL CENTER</span><h3>Admin Dashboard</h3></div></div>
-  <a href="{{ url_for('admin_logout') }}" class="btn btn-outline-danger btn-sm logout-button">Logout</a>
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('admin_feedback') }}" class="btn btn-outline-primary btn-sm">Feedback Inbox</a>
+    <a href="{{ url_for('admin_logout') }}" class="btn btn-outline-danger btn-sm logout-button">Logout</a>
+  </div>
 </div>
 
 <div class="stats-grid mb-4">
@@ -14,11 +17,47 @@
   <div class="stat-card high"><div class="stat-icon high-icon"><svg viewBox="0 0 24 24"><path d="M12 3l9 16H3l9-16zM12 9v4M12 16h.01"/></svg></div><div><h3 id="stat-high-priority">{{ stats.high_priority }}</h3><p>High Priority</p></div></div>
 </div>
 
+<section class="mb-5" aria-labelledby="platform-feedback-heading">
+  <div class="section-heading">
+    <div>
+      <span class="section-kicker">IMPROVE THE PLATFORM</span>
+      <h3 id="platform-feedback-heading">Recent Feedback</h3>
+    </div>
+    <a href="{{ url_for('admin_feedback') }}" class="view-all-link">View all feedback <span aria-hidden="true">→</span></a>
+  </div>
+  <div class="row g-3">
+    {% for item in feedback_items %}
+    <div class="col-md-6">
+      <article class="card h-100 shadow-sm border-0">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start gap-3 mb-2">
+            <span class="badge bg-primary">{{ item.category }}</span>
+            <span class="text-muted small">Feedback #{{ item.id }}</span>
+          </div>
+          <p class="small text-muted mb-2">
+            Date: {{ item.submitted_at.strftime('%Y-%m-%d') }}
+            <span class="mx-1">|</span>
+            Time: {{ item.submitted_at.strftime('%I:%M %p') }}
+          </p>
+          <p class="mb-2">Rating: {{ item.rating }}/5</p>
+          <p class="mb-3" style="white-space: pre-wrap">{{ item.message }}</p>
+          <p class="small text-muted mb-0">From {{ item.name or 'Anonymous' }}</p>
+        </div>
+      </article>
+    </div>
+    {% else %}
+    <div class="col-12">
+      <p class="text-muted mb-0">No feedback yet. Submitted feedback will appear here to help improve the platform.</p>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
 <div class="table-responsive admin-table-wrap">
 <table class="table table-striped table-hover align-middle">
   <thead class="table-dark">
     <tr>
-      <th>ID</th><th>Image</th><th>Category</th><th>Priority</th>
+      <th>ID</th><th>Reported</th><th>Image</th><th>Category</th><th>Priority</th>
       <th>Severity</th><th>Department</th><th>Status</th><th>Reporter</th><th>Action</th>
     </tr>
   </thead>
@@ -26,6 +65,7 @@
     {% for r in reports %}
     <tr>
       <td>{{ r.tracking_id }}</td>
+      <td>Date: {{ r.created_at.strftime('%Y-%m-%d') }}<br><small>Time: {{ r.created_at.strftime('%I:%M %p') }}</small></td>
       <td>{% if r.image_path %}<img src="{{ url_for('static', filename=r.image_path) }}" class="admin-image" alt="Reported issue">{% else %}<span class="text-muted">—</span>{% endif %}</td>
       <td class="text-capitalize">{{ r.category.replace('_',' ') }}</td>
       <td><span class="badge bg-{{ 'danger' if r.priority_level=='High' else 'warning' if r.priority_level=='Medium' else 'secondary' }}">{{ r.priority_level }}</span></td>

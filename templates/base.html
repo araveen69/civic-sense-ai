@@ -26,6 +26,7 @@
       <ul class="navbar-nav ms-auto">
         <li class="nav-item"><a class="nav-link {% if request.endpoint == 'index' %}active{% endif %}" href="{{ url_for('index') }}">Home</a></li>
         <li class="nav-item"><a class="nav-link {% if request.endpoint == 'report_issue' %}active{% endif %}" href="{{ url_for('report_issue') }}">Report Issue</a></li>
+        <li class="nav-item"><a class="nav-link {% if request.endpoint == 'submit_feedback' %}active{% endif %}" href="{{ url_for('submit_feedback') }}">Feedback</a></li>
         <li class="nav-item"><a class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}">Public Dashboard</a></li>
         <li class="nav-item"><a class="nav-link admin-link" href="{{ url_for('admin_login') }}">Admin</a></li>
       </ul>
@@ -53,6 +54,37 @@
 <footer class="text-center py-3 mt-5 custom-footer">
   <p class="mb-0">&copy; 2026 CivicSense AI | Empowering Communities with Intelligent Reporting</p>
 </footer>
+
+<div class="civic-assistant">
+  <section class="assistant-panel" id="assistantPanel" role="dialog"
+           aria-labelledby="assistantTitle" aria-hidden="true" hidden>
+    <header class="assistant-header">
+      <div>
+        <strong id="assistantTitle">CivicSense Assistant</strong>
+        <span>Ask about civic reports and services</span>
+      </div>
+      <button class="assistant-close" type="button" aria-label="Close assistant">&times;</button>
+    </header>
+    <div class="assistant-messages" id="assistantMessages" role="log" aria-live="polite">
+      <div class="assistant-message assistant-reply">
+        Hi! I can help you report an issue, understand report statuses, or look up a report using its tracking ID.
+      </div>
+    </div>
+    <form class="assistant-form" id="assistantForm" data-url="{{ url_for('api_assistant') }}">
+      <label class="visually-hidden" for="assistantQuestion">Ask a civic question</label>
+      <textarea id="assistantQuestion" name="question" rows="1" maxlength="500"
+                placeholder="Ask a civic question..." required></textarea>
+      <button type="submit" aria-label="Send question">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12l16-8-5 16-3-7-8-1zM12 13l4-5"/></svg>
+      </button>
+    </form>
+  </section>
+  <button class="assistant-launcher" id="assistantLauncher" type="button"
+          aria-label="Open CivicSense Assistant" aria-expanded="false" aria-controls="assistantPanel">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11.5a7.5 7.5 0 01-8 7.5 8.7 8.7 0 01-3.5-.7L4 20l1.2-3.6A7.2 7.2 0 014 11.5 7.5 7.5 0 0112 4a7.5 7.5 0 018 7.5z"/><path d="M8.5 11h.01M12 11h.01M15.5 11h.01"/></svg>
+    <span>Ask Civic AI</span>
+  </button>
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>

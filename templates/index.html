@@ -23,6 +23,43 @@
   <div class="stat-card resolved"><div class="stat-icon green"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M8 12l3 3 5-6"/></svg></div><div><h2>{{ resolved }}</h2><p>Resolved</p></div></div>
 </div>
 
+<section class="mb-5" aria-labelledby="community-upvoting-heading">
+  <div class="section-heading">
+    <div>
+      <span class="section-kicker">COMMUNITY UPVOTING</span>
+      <h3 id="community-upvoting-heading">Support local issues</h3>
+    </div>
+    <a href="{{ url_for('dashboard') }}" class="view-all-link">View all reports <span aria-hidden="true">→</span></a>
+  </div>
+  <p class="text-muted small mb-3">Upvote active reports to help the community highlight issues that need attention.</p>
+  <div class="row g-4">
+    {% for r in community_reports %}
+    <div class="col-md-4 mb-4">
+      <div class="card report-card h-100">
+        {% if r.image_path %}
+        <img src="{{ url_for('static', filename=r.image_path) }}" class="card-img-top" alt="issue">
+        {% endif %}
+        <div class="card-body">
+          <h5 class="card-title text-capitalize">{{ r.category.replace('_',' ') }}</h5>
+          <p class="small text-muted mb-1">#{{ r.tracking_id }}</p>
+          <span class="badge bg-{{ 'danger' if r.priority_level=='High' else 'warning' if r.priority_level=='Medium' else 'secondary' }} community-priority">
+            {{ r.priority_level }} Priority
+          </span>
+          <span class="badge bg-info text-dark">{{ r.status }}</span>
+          <p class="mt-2 small text-muted">{{ r.location_address or 'Location not specified' }}</p>
+          <button type="button" class="btn btn-sm btn-outline-success upvote-btn" data-id="{{ r.id }}">
+            Upvote (<span class="count">{{ r.upvotes }}</span>)
+          </button>
+          <span class="small text-muted ms-2 upvote-status" role="status" aria-live="polite"></span>
+        </div>
+      </div>
+    </div>
+    {% else %}
+    <p>No active reports to upvote yet.</p>
+    {% endfor %}
+  </div>
+</section>
+
 <div class="section-heading">
   <div><span class="section-kicker">COMMUNITY UPDATES</span><h3>Recent Reports</h3></div>
   <a href="{{ url_for('dashboard') }}" class="view-all-link">View dashboard <span aria-hidden="true">→</span></a>
@@ -48,4 +85,34 @@
   <p>No reports yet. Be the first to report an issue!</p>
   {% endfor %}
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.querySelectorAll('.upvote-btn').forEach(button => {
+  button.addEventListener('click', async function () {
+    const status = this.parentElement.querySelector('.upvote-status');
+    this.disabled = true;
+    status.textContent = 'Saving...';
+
+    try {
+      const response = await fetch(`/upvote/${this.dataset.id}`, {method: 'POST'});
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error('The upvote could not be saved.');
+      }
+
+      this.querySelector('.count').textContent = data.upvotes;
+      const priority = this.parentElement.querySelector('.community-priority');
+      priority.textContent = `${data.priority} Priority`;
+      priority.className = `badge bg-${data.priority === 'High' ? 'danger' : data.priority === 'Medium' ? 'warning' : 'secondary'} community-priority`;
+      status.textContent = 'Thanks for supporting this report.';
+    } catch (error) {
+      status.textContent = 'Could not save your upvote. Please try again.';
+    } finally {
+      this.disabled = false;
+    }
+  });
+});
+</script>
 {% endblock %}

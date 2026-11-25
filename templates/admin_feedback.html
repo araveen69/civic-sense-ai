@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+{% block title %}Feedback Inbox - CivicSense AI{% endblock %}
+{% block content %}
+<div class="admin-toolbar mb-4">
+  <div class="page-heading">
+    <div><span class="section-kicker">COMMUNITY VOICE</span><h3>Feedback Inbox</h3></div>
+  </div>
+  <a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline-primary btn-sm">Back to dashboard</a>
+</div>
+
+<div class="row g-3">
+  {% for item in feedback_items %}
+  <div class="col-md-6">
+    <article class="card h-100 shadow-sm border-0">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start gap-3 mb-2">
+          <span class="badge bg-primary">{{ item.category }}</span>
+          <span class="text-muted small">Feedback #{{ item.id }}</span>
+        </div>
+        <p class="small text-muted mb-2">
+          Date: {{ item.submitted_at.strftime('%Y-%m-%d') }}
+          <span class="mx-1">|</span>
+          Time: {{ item.submitted_at.strftime('%I:%M %p') }}
+        </p>
+        <p class="mb-2" aria-label="Rating">{{ item.rating }}/5</p>
+        <p class="mb-3" style="white-space: pre-wrap">{{ item.message }}</p>
+        <p class="small text-muted mb-0">From {{ item.name or 'Anonymous' }}</p>
+      </div>
+    </article>
+  </div>
+  {% else %}
+  <div class="col-12">
+    <p class="text-muted">No feedback has been submitted yet.</p>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

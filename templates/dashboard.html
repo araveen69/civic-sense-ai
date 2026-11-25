@@ -176,6 +176,8 @@ const escapeHtml = (value) => String(value ?? '')
   .replaceAll("'", '&#039;');
 
 const mapQuery = window.location.search || '';
+let currentLocationMarker = null;
+let hasLocatedUser = false;
 fetch(`/api/reports/map${mapQuery}`)
   .then(response => response.json())
   .then(data => {
@@ -220,10 +222,12 @@ fetch(`/api/reports/map${mapQuery}`)
 
     issueMapElement.querySelector('.map-loading')?.remove();
     if (markers.length) {
-      const bounds = L.featureGroup(markers).getBounds();
-      issueMap.fitBounds(bounds.pad(0.25), { maxZoom: 13 });
+      if (!hasLocatedUser) {
+        const bounds = L.featureGroup(markers).getBounds();
+        issueMap.fitBounds(bounds.pad(0.25), { maxZoom: 13 });
+      }
     } else {
-      issueMap.setView([20.5937, 78.9629], 5);
+      if (!hasLocatedUser) issueMap.setView([20.5937, 78.9629], 5);
       issueMapElement.insertAdjacentHTML(
         'beforeend',
         '<div class="map-empty-state">No mapped issues match these filters.</div>'
@@ -241,32 +245,35 @@ fetch(`/api/reports/map${mapQuery}`)
   });
 
 document.getElementById('locateMap')?.addEventListener('click', function () {
-  if (!navigator.geolocation) {
-    alert('Location access is not supported by your browser.');
-    return;
-  }
-  this.disabled = true;
-  navigator.geolocation.getCurrentPosition(
-    (position) => {
+  const button = this;
+  button.disabled = true;
+  window.CivicSenseLocation.request(
+    () => {},
+    (position, isPrecise) => {
+      const {latitude, longitude, accuracy} = position.coords;
+      hasLocatedUser = true;
       issueMap.setView(
-        [position.coords.latitude, position.coords.longitude],
-        13,
+        [latitude, longitude],
+        isPrecise ? 15 : 12,
         { animate: true }
       );
-      L.circleMarker([position.coords.latitude, position.coords.longitude], {
+      currentLocationMarker?.remove();
+      currentLocationMarker = L.circleMarker([latitude, longitude], {
         radius: 7,
         color: '#ffffff',
         weight: 3,
         fillColor: '#2563eb',
         fillOpacity: 1
-      }).addTo(issueMap).bindPopup('Your location');
-      this.disabled = false;
+      }).addTo(issueMap).bindPopup(
+        `${isPrecise ? 'Your location' : 'Approximate location'} (±${Math.round(accuracy)} m)`
+      );
+      currentLocationMarker.openPopup();
+      button.disabled = false;
     },
-    () => {
-      alert('We could not access your location.');
-      this.disabled = false;
-    },
-    { enableHighAccuracy: true, timeout: 10000 }
+    (error) => {
+      alert(window.CivicSenseLocation.errorMessage(error));
+      button.disabled = false;
+    }
   );
 });
 }
