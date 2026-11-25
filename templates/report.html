@@ -59,7 +59,7 @@
             <input type="text" name="longitude" id="lon" class="form-control" readonly>
           </div>
         </div>
-        <button type="button" class="btn btn-outline-primary mb-3" onclick="getLocation()">
+        <button type="button" class="btn btn-outline-primary mb-3" id="getLocationButton" onclick="getLocation()">
           <svg viewBox="0 0 24 24" aria-hidden="true" style="width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;vertical-align:-3px"><path d="M12 21s6-5.3 6-12a6 6 0 10-12 0c0 6.7 6 12 6 12z"/><circle cx="12" cy="9" r="2"/></svg>
           Use Current Location
         </button>
@@ -90,24 +90,31 @@ document.getElementById('imageInput').addEventListener('change', function(e){
 
 function getLocation(){
   const status = document.getElementById('locationStatus');
-  if(!navigator.geolocation){
-    status.textContent = 'Location services are not supported by this browser.';
-    return;
-  }
-  status.textContent = 'Getting your precise location...';
-  navigator.geolocation.getCurrentPosition(function(pos){
-    document.getElementById('lat').value = pos.coords.latitude.toFixed(7);
-    document.getElementById('lon').value = pos.coords.longitude.toFixed(7);
-    status.textContent = `Location captured with ±${Math.round(pos.coords.accuracy)} m accuracy.`;
-  }, function(error){
-    status.textContent = error.code === 1
-      ? 'Location permission was denied.'
-      : 'We could not determine your precise location.';
-  }, {
-    enableHighAccuracy: true,
-    timeout: 15000,
-    maximumAge: 0
-  });
+  const button = document.getElementById('getLocationButton');
+  button.disabled = true;
+  status.textContent = 'Finding your location. Keep this page open while we look for the best available GPS fix...';
+
+  const savePosition = (position) => {
+    document.getElementById('lat').value = position.coords.latitude.toFixed(7);
+    document.getElementById('lon').value = position.coords.longitude.toFixed(7);
+  };
+  window.CivicSenseLocation.request(
+    (position) => {
+      savePosition(position);
+      status.textContent = `Location signal found (±${Math.round(position.coords.accuracy)} m); looking for a more accurate fix...`;
+    },
+    (position, isPrecise) => {
+      savePosition(position);
+      status.textContent = isPrecise
+        ? `Location captured with ±${Math.round(position.coords.accuracy)} m accuracy.`
+        : `Only an approximate location is available (±${Math.round(position.coords.accuracy)} m). Check your device's Location Services or enter the address manually.`;
+      button.disabled = false;
+    },
+    (error) => {
+      status.textContent = window.CivicSenseLocation.errorMessage(error);
+      button.disabled = false;
+    }
+  );
 }
 </script>
 {% endblock %}

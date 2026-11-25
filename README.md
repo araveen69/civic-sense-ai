@@ -12,13 +12,14 @@ municipal department.
 - 🏛️ Auto-routing to relevant government department
 - 🔁 Duplicate detection using geolocation
 - 👍 Community upvoting to boost priority
+- 💬 Citizen feedback form with an admin inbox
 - 📊 Public dashboard with live charts
 - 🔐 Admin panel for status management
 - 📍 Tracking ID system for citizens
-- 🔔 Simulated email/SMS notifications
 
 ## Setup
 
 ```bash
 pip install -r requirements.txt
 python app.py
+```

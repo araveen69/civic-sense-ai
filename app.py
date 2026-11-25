@@ -1,4 +1,5 @@
 import os
+import re
 from datetime import datetime
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -6,12 +7,12 @@ from geopy.distance import geodesic
 from geopy.geocoders import Nominatim
 
 from config import Config
-from models.db_models import db, Report, Admin, ActivityLog
+from models.db_models import db, Report, Admin, ActivityLog, Feedback
 from models.ai_classifier import classifier
 from utils.image_processor import save_uploaded_image
 from utils.priority_engine import compute_priority
 from utils.auto_router import route_to_department, generate_tracking_id
-from utils.notification import notify_department, notify_citizen
+from utils.notification import notify_department
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -112,6 +113,73 @@ def check_duplicate(category, lat, lon):
     return None
 
 
+def answer_civic_question(question):
+    normalized = question.lower().replace('_', ' ')
+    tracking_match = re.search(r'\bCIV-\d{6}-[A-Z0-9]{5}\b', question, re.IGNORECASE)
+
+    if tracking_match:
+        tracking_id = tracking_match.group(0).upper()
+        report = Report.query.filter_by(tracking_id=tracking_id).first()
+        if not report:
+            return (f"I couldn't find a report with tracking ID {tracking_id}. "
+                    "Please check the ID and try again.")
+        return (
+            f"Report {report.tracking_id} is currently {report.status}. "
+            f"It is a {report.priority_level.lower()}-priority "
+            f"{report.category.replace('_', ' ')} issue assigned to "
+            f"{report.assigned_department or 'the relevant department'}. "
+            f"Reported on {report.created_at.strftime('%Y-%m-%d')}. "
+            f"You can view its activity timeline on the tracking page."
+        )
+
+    if any(term in normalized for term in ('track', 'tracking id', 'report status', 'status of my')):
+        return ("To check a report, send its tracking ID (for example, "
+                "CIV-240101-ABCDE) and I can look up its current status.")
+
+    if any(term in normalized for term in ('how do i report', 'how to report', 'submit a report',
+                                             'report an issue', 'file a complaint')):
+        return ("Go to Report Issue, enter your contact details and the issue location, "
+                "describe the problem, and upload a photo. Submit the form to receive a "
+                "tracking ID. You can use that ID to check the report's status.")
+
+    if any(term in normalized for term in ('what can i report', 'issue categories',
+                                             'types of issue', 'types of report')):
+        categories = ', '.join(category.replace('_', ' ') for category in Config.DEPARTMENTS)
+        return f"You can report civic issues such as {categories}. Choose the closest category in the report form."
+
+    if any(term in normalized for term in ('department', 'who handles', 'responsible for')):
+        for category, department in Config.DEPARTMENTS.items():
+            category_name = re.escape(category.replace('_', ' '))
+            if re.search(rf'\b{category_name}s?\b', normalized):
+                return (f"{department} handles {category.replace('_', ' ')} reports. "
+                        "Reports are routed to the responsible department when submitted.")
+        return ("Reports are automatically routed to the responsible department based on "
+                "their category. Ask about a specific issue, such as potholes or streetlights.")
+
+    if any(term in normalized for term in ('how many', 'statistics', 'stats', 'report count',
+                                             'total reports')):
+        total = Report.query.count()
+        pending = Report.query.filter_by(status='Pending').count()
+        in_progress = Report.query.filter_by(status='In Progress').count()
+        resolved = Report.query.filter_by(status='Resolved').count()
+        return (f"There are {total} reports in total: {pending} pending, "
+                f"{in_progress} in progress, and {resolved} resolved.")
+
+    if any(term in normalized for term in ('priority', 'high priority', 'severity')):
+        return ("Priority is based on the issue category, AI-assessed severity, and community "
+                "upvotes. High-priority reports are highlighted for attention; the public "
+                "dashboard shows current report priorities.")
+
+    if 'pending' in normalized or 'in progress' in normalized or 'resolved' in normalized:
+        return ("Pending means a report has been submitted and is awaiting action. In Progress "
+                "means the responsible department is working on it. Resolved means the issue "
+                "has been marked as fixed.")
+
+    return ("I can help with reporting a civic issue, supported issue categories, department "
+            "routing, report priorities, live report counts, or checking a report's status. "
+            "For a status lookup, include your tracking ID.")
+
+
 # ---------------------- Public Routes ----------------------
 
 @app.route('/')
@@ -121,8 +189,48 @@ def index():
     pending = Report.query.filter_by(status='Pending').count()
     in_progress = Report.query.filter_by(status='In Progress').count()
     recent = Report.query.order_by(Report.created_at.desc()).limit(6).all()
+    community_reports = Report.query.filter(
+        Report.status.in_(['Pending', 'In Progress'])
+    ).order_by(Report.upvotes.desc(), Report.created_at.desc()).limit(6).all()
     return render_template('index.html', total=total_reports, resolved=resolved,
-                           pending=pending, in_progress=in_progress, recent=recent)
+                           pending=pending, in_progress=in_progress, recent=recent,
+                           community_reports=community_reports)
+
+
+@app.route('/feedback', methods=['GET', 'POST'])
+def submit_feedback():
+    categories = ('Suggestion', 'Bug report', 'General')
+    if request.method == 'POST':
+        name = request.form.get('name', '').strip()
+        category = request.form.get('category', '')
+        message = request.form.get('message', '').strip()
+        try:
+            rating = int(request.form.get('rating', ''))
+        except (TypeError, ValueError):
+            rating = 0
+
+        if category not in categories:
+            flash('Please choose a valid feedback category.', 'danger')
+        elif not 1 <= rating <= 5:
+            flash('Please select a rating from 1 to 5.', 'danger')
+        elif not message:
+            flash('Please enter your feedback before submitting.', 'danger')
+        elif len(message) > 2000:
+            flash('Please keep your feedback under 2,000 characters.', 'danger')
+        elif len(name) > 100:
+            flash('Please keep your name under 100 characters.', 'danger')
+        else:
+            db.session.add(Feedback(
+                name=name or None,
+                category=category,
+                rating=rating,
+                message=message
+            ))
+            db.session.commit()
+            flash('Thank you for sharing your feedback!', 'success')
+            return redirect(url_for('submit_feedback'))
+
+    return render_template('feedback.html', categories=categories)
 
 
 @app.route('/report', methods=['GET', 'POST'])
@@ -194,9 +302,8 @@ def report_issue():
         db.session.add(log)
         db.session.commit()
 
-        # Simulate notifications
+        # Notify the assigned department.
         notify_department(department, tracking_id, category, priority_level)
-        notify_citizen(email, tracking_id, 'Pending')
 
         if duplicate:
             duplicate.upvotes += 1
@@ -290,7 +397,18 @@ def admin_dashboard():
         'resolved': Report.query.filter_by(status='Resolved').count(),
         'high_priority': Report.query.filter_by(priority_level='High').count(),
     }
-    return render_template('admin_dashboard.html', reports=reports, stats=stats)
+    feedback_items = Feedback.query.order_by(Feedback.submitted_at.desc()).limit(5).all()
+    return render_template('admin_dashboard.html', reports=reports, stats=stats,
+                           feedback_items=feedback_items)
+
+
+@app.route('/admin/feedback')
+def admin_feedback():
+    if 'admin_id' not in session:
+        return redirect(url_for('admin_login'))
+
+    feedback_items = Feedback.query.order_by(Feedback.submitted_at.desc()).all()
+    return render_template('admin_feedback.html', feedback_items=feedback_items)
 
 
 @app.route('/admin/update_status/<int:report_id>', methods=['POST'])
@@ -312,8 +430,6 @@ def update_status(report_id):
                        performed_by=session.get('admin_name', 'Admin'))
     db.session.add(log)
     db.session.commit()
-
-    notify_citizen(report.reporter_email, report.tracking_id, new_status)
 
     return jsonify({'success': True, 'status': new_status})
 
@@ -369,6 +485,24 @@ def api_stats():
     }
 
     return jsonify({'categories': categories, 'priorities': priorities})
+
+
+@app.route('/api/assistant', methods=['POST'])
+def api_assistant():
+    if not request.is_json:
+        return jsonify({'error': 'Send your question as JSON.'}), 415
+
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify({'error': 'A JSON object with a question is required.'}), 400
+
+    question = payload.get('question')
+    if not isinstance(question, str) or not question.strip():
+        return jsonify({'error': 'Please enter a question.'}), 400
+    if len(question) > 500:
+        return jsonify({'error': 'Please keep your question under 500 characters.'}), 400
+
+    return jsonify({'answer': answer_civic_question(question.strip())})
 
 
 @app.route('/api/reports/map')
