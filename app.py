@@ -1,10 +1,11 @@
 import os
 import re
-from datetime import datetime
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session
+from datetime import datetime, timedelta
+from flask import Flask, abort, render_template, request, redirect, url_for, flash, jsonify, session
 from werkzeug.security import generate_password_hash, check_password_hash
 from geopy.distance import geodesic
 from geopy.geocoders import Nominatim
+from sqlalchemy import or_
 
 from config import Config
 from models.db_models import db, Report, Admin, ActivityLog, Feedback
@@ -113,6 +114,48 @@ def check_duplicate(category, lat, lon):
     return None
 
 
+def filtered_report_query(args):
+    query = Report.query
+    category = args.get('category', 'all')
+    status = args.get('status', 'all')
+    priority = args.get('priority', 'all')
+    search = args.get('search', '').strip()
+    start_date = args.get('start_date', '').strip()
+    end_date = args.get('end_date', '').strip()
+
+    if category != 'all':
+        query = query.filter_by(category=category)
+    if status != 'all':
+        query = query.filter_by(status=normalize_status(status))
+    if priority != 'all':
+        query = query.filter_by(priority_level=priority)
+    if len(search) > 100:
+        abort(400, description='Search text must be 100 characters or fewer.')
+    if search:
+        search_pattern = f'%{search}%'
+        query = query.filter(or_(
+            Report.tracking_id.ilike(search_pattern),
+            Report.category.ilike(search_pattern),
+            Report.description.ilike(search_pattern),
+            Report.location_address.ilike(search_pattern),
+        ))
+
+    try:
+        start = datetime.strptime(start_date, '%Y-%m-%d') if start_date else None
+        end = datetime.strptime(end_date, '%Y-%m-%d') if end_date else None
+    except ValueError:
+        abort(400, description='Dates must use the YYYY-MM-DD format.')
+
+    if start and end and start > end:
+        abort(400, description='Start date must be on or before end date.')
+    if start:
+        query = query.filter(Report.created_at >= start)
+    if end:
+        query = query.filter(Report.created_at < end + timedelta(days=1))
+
+    return query
+
+
 def answer_civic_question(question):
     normalized = question.lower().replace('_', ' ')
     tracking_match = re.search(r'\bCIV-\d{6}-[A-Z0-9]{5}\b', question, re.IGNORECASE)
@@ -122,39 +165,79 @@ def answer_civic_question(question):
         report = Report.query.filter_by(tracking_id=tracking_id).first()
         if not report:
             return (f"I couldn't find a report with tracking ID {tracking_id}. "
-                    "Please check the ID and try again.")
+                    "Check the letters and numbers on your submission receipt, then try again. "
+                    "Tracking IDs look like CIV-240101-ABCDE.")
+        status_explanations = {
+            'Pending': 'It has been received and is waiting for a department update.',
+            'In Progress': ('The responsible department has marked work as underway; '
+                            'this does not necessarily mean the issue is fixed.'),
+            'Resolved': ('It has been marked as fixed. If the issue is still present, '
+                         'submit a follow-up report and mention this tracking ID.'),
+            'Rejected': ('It has been marked as rejected. Check the activity timeline for '
+                         'any recorded context; a rejection reason may not be available.'),
+        }
+        status_explanation = status_explanations.get(
+            report.status,
+            'Check the tracking page for the latest recorded update.',
+        )
         return (
-            f"Report {report.tracking_id} is currently {report.status}. "
-            f"It is a {report.priority_level.lower()}-priority "
-            f"{report.category.replace('_', ' ')} issue assigned to "
-            f"{report.assigned_department or 'the relevant department'}. "
-            f"Reported on {report.created_at.strftime('%Y-%m-%d')}. "
-            f"You can view its activity timeline on the tracking page."
+            f"Report {report.tracking_id}\n"
+            f"Current status: {report.status}. {status_explanation}\n"
+            f"Issue: {report.category.replace('_', ' ')}\n"
+            f"Priority: {report.priority_level}. This is an automated estimate to help "
+            "organize attention, not a promised response time.\n"
+            f"Assigned department: {report.assigned_department or 'Not assigned'}\n"
+            f"Submitted: {report.created_at.strftime('%Y-%m-%d')}.\n"
+            "Open the tracking page to review the recorded activity timeline."
         )
 
-    if any(term in normalized for term in ('track', 'tracking id', 'report status', 'status of my')):
+    if any(term in normalized for term in (
+            'track', 'tracking id', 'report status', 'status of my',
+            'what is the status', 'check the status', 'check my report')):
         return ("To check a report, send its tracking ID (for example, "
-                "CIV-240101-ABCDE) and I can look up its current status.")
+                "CIV-240101-ABCDE). I can look up the latest status, assigned department, "
+                "priority estimate, submission date, and recorded activity. I cannot predict "
+                "when the issue will be fixed.")
 
     if any(term in normalized for term in ('how do i report', 'how to report', 'submit a report',
                                              'report an issue', 'file a complaint')):
-        return ("Go to Report Issue, enter your contact details and the issue location, "
-                "describe the problem, and upload a photo. Submit the form to receive a "
-                "tracking ID. You can use that ID to check the report's status.")
+        return (
+            "To report a civic issue:\n"
+            "1. Open Report Issue and enter your name and email (required; phone is optional).\n"
+            "2. Upload a photo; it is required for the image analysis. You may choose a "
+            "category yourself or let the app suggest one from the image.\n"
+            "3. Add a description and address if available. You can also try the location "
+            "button, but location details are optional.\n"
+            "4. Submit the form and save the tracking ID shown on the confirmation page.\n"
+            "Use that ID in this assistant or on the tracking page to check recorded updates. "
+            "The image-based category and priority are estimates, so check that the category "
+            "fits your issue."
+        )
 
     if any(term in normalized for term in ('what can i report', 'issue categories',
                                              'types of issue', 'types of report')):
-        categories = ', '.join(category.replace('_', ' ') for category in Config.DEPARTMENTS)
-        return f"You can report civic issues such as {categories}. Choose the closest category in the report form."
+        categories = ', '.join(
+            category.replace('_', ' ') for category in Config.DEPARTMENTS
+        )
+        return (
+            f"This app accepts reports for: {categories}. Choose the closest category in "
+            "the report form. Category suggestions from the photo can be imperfect, and "
+            "you can select a category yourself."
+        )
 
     if any(term in normalized for term in ('department', 'who handles', 'responsible for')):
         for category, department in Config.DEPARTMENTS.items():
             category_name = re.escape(category.replace('_', ' '))
             if re.search(rf'\b{category_name}s?\b', normalized):
-                return (f"{department} handles {category.replace('_', ' ')} reports. "
-                        "Reports are routed to the responsible department when submitted.")
+                return (
+                    f"{department} is the department this app maps to "
+                    f"{category.replace('_', ' ')} reports. When a report in that category "
+                    "is submitted, the app assigns it there. The tracking page shows the "
+                    "current assignment and recorded status updates."
+                )
         return ("Reports are automatically routed to the responsible department based on "
-                "their category. Ask about a specific issue, such as potholes or streetlights.")
+                "their selected category when submitted. Ask about a supported category "
+                "such as potholes, garbage, or streetlights to see its department.")
 
     if any(term in normalized for term in ('how many', 'statistics', 'stats', 'report count',
                                              'total reports')):
@@ -162,22 +245,38 @@ def answer_civic_question(question):
         pending = Report.query.filter_by(status='Pending').count()
         in_progress = Report.query.filter_by(status='In Progress').count()
         resolved = Report.query.filter_by(status='Resolved').count()
-        return (f"There are {total} reports in total: {pending} pending, "
-                f"{in_progress} in progress, and {resolved} resolved.")
+        rejected = Report.query.filter_by(status='Rejected').count()
+        return (
+            f"The app currently stores {total} reports: {pending} pending "
+            f"(awaiting an update), {in_progress} in progress, {resolved} resolved, "
+            f"and {rejected} rejected. These are current database counts, not a forecast."
+        )
 
     if any(term in normalized for term in ('priority', 'high priority', 'severity')):
         return ("Priority is based on the issue category, AI-assessed severity, and community "
-                "upvotes. High-priority reports are highlighted for attention; the public "
-                "dashboard shows current report priorities.")
+                "upvotes, with a limited boost for urgency words in the description. The "
+                "result is an automated estimate used to help order reports; it can be "
+                "imperfect and does not guarantee how quickly a department will respond. "
+                "The public dashboard shows each report's current priority.")
 
-    if 'pending' in normalized or 'in progress' in normalized or 'resolved' in normalized:
-        return ("Pending means a report has been submitted and is awaiting action. In Progress "
-                "means the responsible department is working on it. Resolved means the issue "
-                "has been marked as fixed.")
+    status_explanations = {
+        'pending': 'Pending means the report was received and is waiting for a department update.',
+        'in progress': ('In Progress means the department has marked work as underway; '
+                        'it does not necessarily mean the issue is fixed.'),
+        'resolved': ('Resolved means the report has been marked as fixed. If the issue is '
+                     'still present, submit a follow-up report and reference the original ID.'),
+        'rejected': ('Rejected means the report was marked as rejected. Check its activity '
+                     'timeline for any recorded context; a reason may not be available.'),
+    }
+    for status, explanation in status_explanations.items():
+        if re.search(rf'\b{re.escape(status)}\b', normalized):
+            return explanation
 
     return ("I can help with reporting a civic issue, supported issue categories, department "
             "routing, report priorities, live report counts, or checking a report's status. "
-            "For a status lookup, include your tracking ID.")
+            "For a status lookup, include your tracking ID (for example, CIV-240101-ABCDE). "
+            "I only use information available in this app, so I may not know details that "
+            "have not been recorded.")
 
 
 # ---------------------- Public Routes ----------------------
@@ -327,21 +426,24 @@ def track_issue(tracking_id):
 
 @app.route('/dashboard')
 def dashboard():
-    category_filter = request.args.get('category', 'all')
-    status_filter = request.args.get('status', 'all')
-    priority_filter = request.args.get('priority', 'all')
+    sort = request.args.get('sort', 'priority')
+    sort_options = {
+        'priority': Report.severity_score.desc(),
+        'recent': Report.created_at.desc(),
+        'oldest': Report.created_at.asc(),
+        'upvotes': Report.upvotes.desc(),
+    }
+    if sort not in sort_options:
+        abort(400, description='Invalid report sort order.')
 
-    query = Report.query
-    if category_filter != 'all':
-        query = query.filter_by(category=category_filter)
-    if status_filter != 'all':
-        query = query.filter_by(status=normalize_status(status_filter))
-    if priority_filter != 'all':
-        query = query.filter_by(priority_level=priority_filter)
-
-    reports = query.order_by(Report.severity_score.desc()).all()
-    return render_template('dashboard.html', reports=reports,
-                           categories=list(Config.DEPARTMENTS.keys()))
+    pagination = filtered_report_query(request.args).order_by(
+        sort_options[sort]
+    ).paginate(page=request.args.get('page', 1, type=int), per_page=9, error_out=False)
+    return render_template(
+        'dashboard.html',
+        pagination=pagination,
+        categories=list(Config.DEPARTMENTS.keys()),
+    )
 
 
 @app.route('/upvote/<int:report_id>', methods=['POST'])
@@ -474,17 +576,61 @@ def delete_complaint(report_id):
 @app.route('/api/stats')
 def api_stats():
     """API endpoint for charts on dashboard."""
+    query = filtered_report_query(request.args)
     categories = {}
     for cat in Config.DEPARTMENTS.keys():
-        categories[cat] = Report.query.filter_by(category=cat).count()
+        categories[cat] = query.filter_by(category=cat).count()
 
     priorities = {
-        'High': Report.query.filter_by(priority_level='High').count(),
-        'Medium': Report.query.filter_by(priority_level='Medium').count(),
-        'Low': Report.query.filter_by(priority_level='Low').count(),
+        'High': query.filter_by(priority_level='High').count(),
+        'Medium': query.filter_by(priority_level='Medium').count(),
+        'Low': query.filter_by(priority_level='Low').count(),
     }
+    trend_rows = query.with_entities(
+        db.func.date(Report.created_at),
+        db.func.count(Report.id),
+    ).group_by(
+        db.func.date(Report.created_at)
+    ).order_by(
+        db.func.date(Report.created_at)
+    ).all()
 
-    return jsonify({'categories': categories, 'priorities': priorities})
+    return jsonify({
+        'categories': categories,
+        'priorities': priorities,
+        'trend': {
+            'dates': [str(day) for day, _ in trend_rows],
+            'counts': [count for _, count in trend_rows],
+        },
+    })
+
+
+@app.route('/api/notifications')
+def api_notifications():
+    """Return recent complaint notifications without reporter contact details."""
+    after_id = request.args.get('after_id')
+    if after_id is None:
+        reports = Report.query.order_by(Report.id.desc()).limit(5).all()
+    else:
+        try:
+            after_id = int(after_id)
+        except ValueError:
+            abort(400, description='Notification cursor must be a non-negative integer.')
+        if after_id < 0:
+            abort(400, description='Notification cursor must be a non-negative integer.')
+        reports = Report.query.filter(
+            Report.id > after_id
+        ).order_by(Report.id.asc()).limit(20).all()
+
+    notifications = [{
+        'id': report.id,
+        'tracking_id': report.tracking_id,
+        'category': report.category,
+        'location': report.location_address or 'Location not specified',
+        'created_at': report.created_at.strftime('%b %d, %Y %I:%M %p UTC'),
+        'url': url_for('track_issue', tracking_id=report.tracking_id),
+    } for report in reports]
+    return jsonify({'notifications': notifications})
 
 
 @app.route('/api/assistant', methods=['POST'])
@@ -508,20 +654,8 @@ def api_assistant():
 @app.route('/api/reports/map')
 def api_reports_map():
     """Return geolocated reports, optionally filtered with dashboard query parameters."""
-    category_filter = request.args.get('category', 'all')
-    status_filter = request.args.get('status', 'all')
-    priority_filter = request.args.get('priority', 'all')
-
-    query = Report.query
-    if category_filter != 'all':
-        query = query.filter_by(category=category_filter)
-    if status_filter != 'all':
-        query = query.filter_by(status=normalize_status(status_filter))
-    if priority_filter != 'all':
-        query = query.filter_by(priority_level=priority_filter)
-
     reports = []
-    for report in query.order_by(Report.created_at.desc()).all():
+    for report in filtered_report_query(request.args).order_by(Report.created_at.desc()).all():
         data = report.to_dict()
         latitude = report.latitude
         longitude = report.longitude

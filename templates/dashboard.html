@@ -8,43 +8,97 @@
   </div>
 </div>
 
+<section class="notification-center mb-4" aria-labelledby="notificationCenterTitle">
+  <div class="notification-center-heading">
+    <div>
+      <span class="section-kicker">COMMUNITY ACTIVITY</span>
+      <h4 id="notificationCenterTitle">New complaints</h4>
+    </div>
+    <div class="notification-center-status">
+      <span class="notification-live-indicator" aria-hidden="true"></span>
+      <span id="notificationStatus" role="status">Connecting to live updates...</span>
+      <span class="notification-new-count" id="notificationNewCount">0 new</span>
+    </div>
+  </div>
+  <ol class="notification-list" id="notificationList" data-url="{{ url_for('api_notifications') }}"
+      aria-live="polite" aria-relevant="additions text">
+    <li class="notification-empty">Loading recent complaints...</li>
+  </ol>
+</section>
+
 <div class="chart-grid mb-4">
   <div class="chart-card"><div class="chart-card-heading"><span>Reports by category</span></div><canvas id="categoryChart"></canvas></div>
   <div class="chart-card"><div class="chart-card-heading"><span>Priority overview</span></div><canvas id="priorityChart"></canvas></div>
 </div>
 
-<form method="GET" class="filter-panel row g-2 mb-4">
-  <div class="col-md-3">
-    <select name="category" class="form-select">
+<div class="chart-card mb-4">
+  <div class="chart-card-heading"><span>Reports over time</span></div>
+  <canvas id="trendChart" aria-label="Daily reports over time"></canvas>
+</div>
+
+<form method="GET" class="filter-panel row g-3 mb-4">
+  <div class="col-lg-2 col-md-4">
+    <label class="visually-hidden" for="dashboardCategory">Category</label>
+    <select id="dashboardCategory" name="category" class="form-select">
       <option value="all">All Categories</option>
       {% for c in categories %}
       <option value="{{ c }}" {% if request.args.get('category') == c %}selected{% endif %}>{{ c.replace('_',' ').title() }}</option>
       {% endfor %}
     </select>
   </div>
-  <div class="col-md-3">
-    <select name="status" class="form-select">
+  <div class="col-lg-2 col-md-4">
+    <label class="visually-hidden" for="dashboardStatus">Status</label>
+    <select id="dashboardStatus" name="status" class="form-select">
       <option value="all" {% if request.args.get('status', 'all') == 'all' %}selected{% endif %}>All Status</option>
       <option value="Pending" {% if request.args.get('status') == 'Pending' %}selected{% endif %}>Pending</option>
       <option value="In Progress" {% if request.args.get('status') == 'In Progress' %}selected{% endif %}>In Progress</option>
       <option value="Resolved" {% if request.args.get('status') == 'Resolved' %}selected{% endif %}>Resolved</option>
+      <option value="Rejected" {% if request.args.get('status') == 'Rejected' %}selected{% endif %}>Rejected</option>
     </select>
   </div>
-  <div class="col-md-3">
-    <select name="priority" class="form-select">
+  <div class="col-lg-2 col-md-4">
+    <label class="visually-hidden" for="dashboardPriority">Priority</label>
+    <select id="dashboardPriority" name="priority" class="form-select">
       <option value="all" {% if request.args.get('priority', 'all') == 'all' %}selected{% endif %}>All Priorities</option>
       <option value="High" {% if request.args.get('priority') == 'High' %}selected{% endif %}>High</option>
       <option value="Medium" {% if request.args.get('priority') == 'Medium' %}selected{% endif %}>Medium</option>
       <option value="Low" {% if request.args.get('priority') == 'Low' %}selected{% endif %}>Low</option>
     </select>
   </div>
-  <div class="col-md-3 d-grid">
-    <button class="btn filter-button">
+  <div class="col-lg-3 col-md-6">
+    <label class="visually-hidden" for="dashboardSearch">Search reports</label>
+    <input id="dashboardSearch" name="search" class="form-control" type="search"
+           maxlength="100" placeholder="Search reports..." value="{{ request.args.get('search', '') }}">
+  </div>
+  <div class="col-lg-3 col-md-6">
+    <label class="visually-hidden" for="dashboardSort">Sort reports</label>
+    <select id="dashboardSort" name="sort" class="form-select">
+      <option value="priority" {% if request.args.get('sort', 'priority') == 'priority' %}selected{% endif %}>Highest severity</option>
+      <option value="recent" {% if request.args.get('sort') == 'recent' %}selected{% endif %}>Newest first</option>
+      <option value="oldest" {% if request.args.get('sort') == 'oldest' %}selected{% endif %}>Oldest first</option>
+      <option value="upvotes" {% if request.args.get('sort') == 'upvotes' %}selected{% endif %}>Most upvoted</option>
+    </select>
+  </div>
+  <div class="col-lg-2 col-md-6">
+    <label class="form-label small mb-1" for="startDate">From date</label>
+    <input id="startDate" name="start_date" class="form-control" type="date"
+           value="{{ request.args.get('start_date', '') }}">
+  </div>
+  <div class="col-lg-2 col-md-6">
+    <label class="form-label small mb-1" for="endDate">To date</label>
+    <input id="endDate" name="end_date" class="form-control" type="date"
+           value="{{ request.args.get('end_date', '') }}">
+  </div>
+  <div class="col-12 d-flex flex-wrap gap-2">
+    <button type="submit" class="btn filter-button px-4">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16M7 12h10M10 19h4"/></svg>
-      Apply Filters
+      Apply filters
     </button>
+    <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary d-flex align-items-center">Clear filters</a>
   </div>
 </form>
+
+<p class="small text-muted mb-3" aria-live="polite">{{ pagination.total }} reports found</p>
 
 <section class="issue-map-card mb-4">
   <div class="issue-map-heading">
@@ -57,6 +111,9 @@
       <button type="button" class="map-locate-button" id="locateMap" aria-label="Locate me">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
         Near me
+      </button>
+      <button type="button" class="map-locate-button" id="fitReports" disabled>
+        Fit issues
       </button>
       <div class="map-legend" aria-label="Map priority legend">
         <span><i class="legend-dot high"></i> High</span>
@@ -71,7 +128,7 @@
 </section>
 
 <div class="row">
-  {% for r in reports %}
+  {% for r in pagination.items %}
   <div class="col-md-4 mb-4">
     <div class="card report-card h-100">
       {% if r.image_path %}
@@ -98,13 +155,116 @@
   <p>No reports found.</p>
   {% endfor %}
 </div>
+
+{% if pagination.pages > 1 %}
+<nav class="mt-2 mb-5" aria-label="Report pages">
+  <ul class="pagination justify-content-center">
+    <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
+      {% if pagination.has_prev %}
+      <a class="page-link" href="{{ url_for('dashboard', page=pagination.prev_num, category=request.args.get('category'), status=request.args.get('status'), priority=request.args.get('priority'), search=request.args.get('search'), sort=request.args.get('sort'), start_date=request.args.get('start_date'), end_date=request.args.get('end_date')) }}">Previous</a>
+      {% else %}
+      <span class="page-link">Previous</span>
+      {% endif %}
+    </li>
+    <li class="page-item disabled"><span class="page-link">Page {{ pagination.page }} of {{ pagination.pages }}</span></li>
+    <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
+      {% if pagination.has_next %}
+      <a class="page-link" href="{{ url_for('dashboard', page=pagination.next_num, category=request.args.get('category'), status=request.args.get('status'), priority=request.args.get('priority'), search=request.args.get('search'), sort=request.args.get('sort'), start_date=request.args.get('start_date'), end_date=request.args.get('end_date')) }}">Next</a>
+      {% else %}
+      <span class="page-link">Next</span>
+      {% endif %}
+    </li>
+  </ul>
+</nav>
+{% endif %}
 {% endblock %}
 
 {% block scripts %}
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-fetch('/api/stats').then(r => r.json()).then(data => {
+const notificationList = document.getElementById('notificationList');
+const notificationStatus = document.getElementById('notificationStatus');
+const notificationNewCount = document.getElementById('notificationNewCount');
+let latestNotificationId = 0;
+let newNotificationCount = 0;
+let notificationLoadComplete = false;
+
+const renderNotification = (notification, isNew) => {
+  const item = document.createElement('li');
+  item.className = `notification-item${isNew ? ' notification-item-new' : ''}`;
+
+  const details = document.createElement('div');
+  details.className = 'notification-details';
+  const title = document.createElement('strong');
+  title.textContent = notification.category.replaceAll('_', ' ');
+  const metadata = document.createElement('span');
+  metadata.textContent = `${notification.location} · ${notification.created_at}`;
+  details.append(title, metadata);
+
+  const trackingLink = document.createElement('a');
+  trackingLink.href = notification.url;
+  trackingLink.textContent = `#${notification.tracking_id}`;
+  trackingLink.setAttribute('aria-label', `Track complaint ${notification.tracking_id}`);
+  item.append(details, trackingLink);
+  return item;
+};
+
+const refreshNotifications = async () => {
+  const url = new URL(notificationList.dataset.url, window.location.origin);
+  if (notificationLoadComplete) {
+    url.searchParams.set('after_id', latestNotificationId);
+  }
+
+  try {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error('Unable to fetch complaint notifications.');
+    const data = await response.json();
+
+    if (!notificationLoadComplete) {
+      notificationList.replaceChildren();
+    }
+
+    data.notifications.forEach(notification => {
+      latestNotificationId = Math.max(latestNotificationId, notification.id);
+      notificationList.appendChild(renderNotification(notification, notificationLoadComplete));
+    });
+
+    if (!notificationLoadComplete && !data.notifications.length) {
+      const emptyState = document.createElement('li');
+      emptyState.className = 'notification-empty';
+      emptyState.textContent = 'No complaints have been registered yet.';
+      notificationList.appendChild(emptyState);
+    }
+
+    if (notificationLoadComplete && data.notifications.length) {
+      newNotificationCount += data.notifications.length;
+      notificationNewCount.textContent = `${newNotificationCount} new`;
+      notificationList.querySelector('.notification-empty')?.remove();
+      while (notificationList.children.length > 8) {
+        notificationList.firstElementChild.remove();
+      }
+    }
+
+    notificationLoadComplete = true;
+    notificationStatus.textContent = 'Live · checking every 20 seconds';
+  } catch (error) {
+    notificationStatus.textContent = 'Updates unavailable · retrying';
+    if (!notificationLoadComplete) {
+      notificationList.replaceChildren();
+      const errorState = document.createElement('li');
+      errorState.className = 'notification-empty';
+      errorState.textContent = 'Could not load complaints. Retrying shortly.';
+      notificationList.appendChild(errorState);
+    }
+  } finally {
+    window.setTimeout(refreshNotifications, 20000);
+  }
+};
+
+refreshNotifications();
+
+fetch(`/api/stats${window.location.search}`).then(r => r.json()).then(data => {
   new Chart(document.getElementById('categoryChart'), {
     type: 'bar',
     data: {
@@ -135,6 +295,29 @@ fetch('/api/stats').then(r => r.json()).then(data => {
       plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8, padding: 16 } } }
     }
   });
+  new Chart(document.getElementById('trendChart'), {
+    type: 'line',
+    data: {
+      labels: data.trend.dates,
+      datasets: [{
+        label: 'Reports submitted',
+        data: data.trend.counts,
+        borderColor: '#2563eb',
+        backgroundColor: 'rgba(37, 99, 235, .12)',
+        fill: true,
+        tension: .3,
+        pointRadius: 3
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: '#667085', maxTicksLimit: 10 } },
+        y: { beginAtZero: true, ticks: { precision: 0, color: '#667085' } }
+      }
+    }
+  });
 });
 
 document.querySelectorAll('.upvote-btn').forEach(btn => {
@@ -156,6 +339,16 @@ const issueMap = L.map(issueMapElement, {
   scrollWheelZoom: false,
   zoomControl: true
 }).setView([20.5937, 78.9629], 5);
+let reportMarkers = [];
+let hasLocatedUser = false;
+let currentLocationMarker = null;
+const fitReportsButton = document.getElementById('fitReports');
+
+fitReportsButton?.addEventListener('click', () => {
+  if (!reportMarkers.length) return;
+  hasLocatedUser = false;
+  issueMap.fitBounds(L.featureGroup(reportMarkers).getBounds().pad(0.25), { maxZoom: 13 });
+});
 
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   maxZoom: 19,
@@ -176,12 +369,10 @@ const escapeHtml = (value) => String(value ?? '')
   .replaceAll("'", '&#039;');
 
 const mapQuery = window.location.search || '';
-let currentLocationMarker = null;
-let hasLocatedUser = false;
 fetch(`/api/reports/map${mapQuery}`)
   .then(response => response.json())
   .then(data => {
-    const markers = [];
+    const markers = reportMarkers;
     const mapResultCount = document.getElementById('mapResultCount');
     if (mapResultCount) {
       mapResultCount.textContent = `${data.reports.length} ${data.reports.length === 1 ? 'issue' : 'issues'}`;
@@ -221,6 +412,7 @@ fetch(`/api/reports/map${mapQuery}`)
     });
 
     issueMapElement.querySelector('.map-loading')?.remove();
+    if (fitReportsButton) fitReportsButton.disabled = markers.length === 0;
     if (markers.length) {
       if (!hasLocatedUser) {
         const bounds = L.featureGroup(markers).getBounds();

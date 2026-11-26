@@ -19,15 +19,25 @@
         <tr><th>Reported On</th><td>{{ report.created_at }}</td></tr>
       </table>
 
-      <h5>Activity Timeline</h5>
-      <ul class="list-group">
+      <h5 class="complaint-timeline-heading">Activity Timeline</h5>
+      <ol class="complaint-timeline" aria-label="Complaint activity timeline">
         {% for log in logs %}
-        <li class="list-group-item">
-          <strong>{{ log.action }}</strong> — {{ log.performed_by }}
-          <span class="float-end text-muted small">{{ log.timestamp.strftime('%Y-%m-%d %H:%M') }}</span>
+        <li class="complaint-timeline-item">
+          <span class="complaint-timeline-marker" aria-hidden="true"></span>
+          <div class="complaint-timeline-entry">
+            <div class="complaint-timeline-event">
+              <strong>{{ log.action }}</strong>
+              <time datetime="{{ log.timestamp.isoformat() }}">
+                {{ log.timestamp.strftime('%Y-%m-%d %H:%M') }}
+              </time>
+            </div>
+            <span class="complaint-timeline-byline">Updated by {{ log.performed_by or 'CivicSense' }}</span>
+          </div>
         </li>
+        {% else %}
+        <li class="complaint-timeline-empty">No activity has been recorded for this complaint yet.</li>
         {% endfor %}
-      </ul>
+      </ol>
     </div>
   </div>
 </div>
