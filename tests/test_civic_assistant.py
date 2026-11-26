@@ -17,7 +17,10 @@ class CivicAssistantTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn('tracking ID', response.get_json()['answer'])
+        answer = response.get_json()['answer']
+        self.assertIn('tracking ID', answer)
+        self.assertIn('photo', answer)
+        self.assertIn('required', answer)
 
     def test_assistant_widget_is_rendered_in_shared_layout(self):
         response = self.client.get('/admin/login')
@@ -45,8 +48,22 @@ class CivicAssistantTests(unittest.TestCase):
             )
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn('In Progress', response.get_json()['answer'])
-        self.assertIn('Roads Department', response.get_json()['answer'])
+        answer = response.get_json()['answer']
+        self.assertIn('In Progress', answer)
+        self.assertIn('Roads Department', answer)
+        self.assertIn('not a promised response time', answer)
+        self.assertIn('activity timeline', answer)
+
+    def test_explains_rejected_status_without_making_up_a_reason(self):
+        response = self.client.post(
+            '/api/assistant',
+            json={'question': 'What does rejected mean?'}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        answer = response.get_json()['answer']
+        self.assertIn('marked as rejected', answer)
+        self.assertIn('reason may not be available', answer)
 
     def test_rejects_empty_questions(self):
         response = self.client.post('/api/assistant', json={'question': '  '})
