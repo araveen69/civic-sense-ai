@@ -1,9 +1,11 @@
+import math
 import os
 import re
 from datetime import datetime, timedelta
 from flask import Flask, abort, render_template, request, redirect, url_for, flash, jsonify, session
 from werkzeug.security import generate_password_hash, check_password_hash
 from geopy.distance import geodesic
+from geopy.exc import GeocoderServiceError
 from geopy.geocoders import Nominatim
 from sqlalchemy import or_
 
@@ -675,6 +677,45 @@ def api_assistant():
         return jsonify({'error': 'Please keep your question under 500 characters.'}), 400
 
     return jsonify({'answer': answer_civic_question(question.strip())})
+
+
+@app.route('/api/location/reverse', methods=['POST'])
+def api_reverse_geocode():
+    if not request.is_json:
+        return jsonify({'error': 'Send coordinates as JSON.'}), 415
+
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify({'error': 'A JSON object with coordinates is required.'}), 400
+
+    try:
+        latitude = float(payload['latitude'])
+        longitude = float(payload['longitude'])
+    except (KeyError, OverflowError, TypeError, ValueError):
+        return jsonify({'error': 'Valid latitude and longitude are required.'}), 400
+
+    if (
+        not math.isfinite(latitude)
+        or not math.isfinite(longitude)
+        or not -90 <= latitude <= 90
+        or not -180 <= longitude <= 180
+    ):
+        return jsonify({'error': 'Latitude or longitude is out of range.'}), 400
+
+    try:
+        location = geocoder.reverse(
+            (latitude, longitude),
+            exactly_one=True,
+            language='en'
+        )
+    except GeocoderServiceError:
+        app.logger.warning('Reverse geocoding service is unavailable.')
+        return jsonify({'error': 'Unable to look up the address right now.'}), 503
+
+    if not location or not location.address:
+        return jsonify({'error': 'No address was found for this location.'}), 404
+
+    return jsonify({'address': location.address})
 
 
 @app.route('/api/reports/map')

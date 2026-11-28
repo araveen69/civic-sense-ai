@@ -49,17 +49,11 @@
           <input type="text" name="address" class="form-control" placeholder="Street, Area, City">
         </div>
 
-        <div class="row">
-          <div class="col-md-6 mb-3">
-            <label class="form-label">Latitude</label>
-            <input type="text" name="latitude" id="lat" class="form-control" readonly>
-          </div>
-          <div class="col-md-6 mb-3">
-            <label class="form-label">Longitude</label>
-            <input type="text" name="longitude" id="lon" class="form-control" readonly>
-          </div>
-        </div>
-        <button type="button" class="btn btn-outline-primary mb-3" id="getLocationButton" onclick="getLocation()">
+        <input type="hidden" name="latitude" id="lat">
+        <input type="hidden" name="longitude" id="lon">
+        <p class="small text-muted">Location is optional. Use the button to fill your current address and coordinates.</p>
+        <button type="button" class="btn btn-outline-primary mb-3" id="getLocationButton"
+          data-reverse-geocode-url="{{ url_for('api_reverse_geocode') }}" onclick="getLocation()">
           <svg viewBox="0 0 24 24" aria-hidden="true" style="width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;vertical-align:-3px"><path d="M12 21s6-5.3 6-12a6 6 0 10-12 0c0 6.7 6 12 6 12z"/><circle cx="12" cy="9" r="2"/></svg>
           Use Current Location
         </button>
@@ -91,6 +85,7 @@ document.getElementById('imageInput').addEventListener('change', function(e){
 function getLocation(){
   const status = document.getElementById('locationStatus');
   const button = document.getElementById('getLocationButton');
+  const addressInput = document.querySelector('[name="address"]');
   button.disabled = true;
   status.textContent = 'Finding your location. Keep this page open while we look for the best available GPS fix...';
 
@@ -98,18 +93,38 @@ function getLocation(){
     document.getElementById('lat').value = position.coords.latitude.toFixed(7);
     document.getElementById('lon').value = position.coords.longitude.toFixed(7);
   };
+  const fillAddress = async (position, isPrecise) => {
+    savePosition(position);
+    status.textContent = 'Coordinates captured. Looking up the full address...';
+    try {
+      const response = await fetch(button.dataset.reverseGeocodeUrl, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude
+        })
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || 'Unable to look up this address.');
+      }
+      addressInput.value = result.address;
+      const accuracy = Math.round(position.coords.accuracy);
+      status.textContent = `${isPrecise ? 'Current location' : 'Approximate location'} found (±${accuracy} m); address filled.`;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Address lookup failed.';
+      status.textContent = `${message} Coordinates are saved; you can enter the address manually.`;
+    } finally {
+      button.disabled = false;
+    }
+  };
   window.CivicSenseLocation.request(
     (position) => {
       savePosition(position);
       status.textContent = `Location signal found (±${Math.round(position.coords.accuracy)} m); looking for a more accurate fix...`;
     },
-    (position, isPrecise) => {
-      savePosition(position);
-      status.textContent = isPrecise
-        ? `Location captured with ±${Math.round(position.coords.accuracy)} m accuracy.`
-        : `Only an approximate location is available (±${Math.round(position.coords.accuracy)} m). Check your device's Location Services or enter the address manually.`;
-      button.disabled = false;
-    },
+    fillAddress,
     (error) => {
       status.textContent = window.CivicSenseLocation.errorMessage(error);
       button.disabled = false;
