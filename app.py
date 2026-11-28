@@ -501,7 +501,8 @@ def admin_dashboard():
     }
     feedback_items = Feedback.query.order_by(Feedback.submitted_at.desc()).limit(5).all()
     return render_template('admin_dashboard.html', reports=reports, stats=stats,
-                           feedback_items=feedback_items)
+                           feedback_items=feedback_items,
+                           departments=sorted(set(Config.DEPARTMENTS.values())))
 
 
 @app.route('/admin/feedback')
@@ -534,6 +535,31 @@ def update_status(report_id):
     db.session.commit()
 
     return jsonify({'success': True, 'status': new_status})
+
+
+@app.route('/admin/assign_department/<int:report_id>', methods=['POST'])
+def assign_department(report_id):
+    if 'admin_id' not in session:
+        return jsonify({'error': 'unauthorized'}), 401
+
+    department = request.form.get('department')
+    if department not in Config.DEPARTMENTS.values():
+        return jsonify({'error': 'Invalid department.'}), 400
+
+    report = Report.query.get_or_404(report_id)
+    if report.assigned_department == department:
+        return jsonify({'success': True, 'department': department})
+
+    report.assigned_department = department
+    db.session.add(ActivityLog(
+        report_id=report.id,
+        action=f'Department changed to {department}',
+        performed_by=session.get('admin_name', 'Admin')
+    ))
+    db.session.commit()
+    notify_department(department, report.tracking_id, report.category, report.priority_level)
+
+    return jsonify({'success': True, 'department': department})
 
 
 @app.route('/admin/delete_complaint/<int:report_id>', methods=['POST'])

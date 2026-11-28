@@ -70,7 +70,17 @@
       <td class="text-capitalize">{{ r.category.replace('_',' ') }}</td>
       <td><span class="badge bg-{{ 'danger' if r.priority_level=='High' else 'warning' if r.priority_level=='Medium' else 'secondary' }}">{{ r.priority_level }}</span></td>
       <td>{{ r.severity_score }}</td>
-      <td>{{ r.assigned_department }}</td>
+      <td>
+        <select class="form-select form-select-sm department-select"
+                data-id="{{ r.id }}"
+                data-current-department="{{ r.assigned_department or '' }}"
+                aria-label="Assign {{ r.tracking_id }} to a department">
+          <option value="" {% if not r.assigned_department %}selected{% endif %} disabled>Unassigned</option>
+          {% for department in departments %}
+          <option value="{{ department }}" {% if r.assigned_department == department %}selected{% endif %}>{{ department }}</option>
+          {% endfor %}
+        </select>
+      </td>
       <td>
         <select class="form-select form-select-sm status-select" data-id="{{ r.id }}" data-current-status="{{ r.status }}">
           <option {% if r.status=='Pending' %}selected{% endif %}>Pending</option>
@@ -131,6 +141,28 @@ document.querySelectorAll('.status-select').forEach(sel => {
       .catch(() => {
         this.value = previousStatus;
         alert('Unable to update status.');
+      });
+  });
+});
+
+document.querySelectorAll('.department-select').forEach(sel => {
+  sel.addEventListener('change', function() {
+    const previousDepartment = this.dataset.currentDepartment;
+    const formData = new FormData();
+    formData.append('department', this.value);
+    fetch(`/admin/assign_department/${this.dataset.id}`, { method: 'POST', body: formData })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          this.dataset.currentDepartment = data.department;
+        } else {
+          this.value = previousDepartment;
+          alert(data.error || 'Unable to assign department.');
+        }
+      })
+      .catch(() => {
+        this.value = previousDepartment;
+        alert('Unable to assign department.');
       });
   });
 });

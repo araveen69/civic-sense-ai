@@ -8,6 +8,7 @@ fine-tuned on civic issue datasets).
 """
 
 import cv2
+import logging
 import numpy as np
 import os
 import random
@@ -21,6 +22,7 @@ CATEGORIES = [
 ]
 
 MODEL_PATH = os.path.join(os.path.dirname(__file__), 'civic_model.pkl')
+FEATURE_COUNT = 15
 
 
 class CivicAIClassifier:
@@ -32,7 +34,7 @@ class CivicAIClassifier:
         """Extract handcrafted visual features from image."""
         img = cv2.imread(image_path)
         if img is None:
-            return np.zeros(15)
+            return np.zeros(FEATURE_COUNT)
 
         img = cv2.resize(img, (128, 128))
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -63,14 +65,25 @@ class CivicAIClassifier:
             hist_b / (hist_b.sum() + 1e-6),
             [edge_density, texture_std / 255.0, dark_ratio, green_ratio]
         ])
-        return features[:15] if len(features) >= 15 else np.pad(features, (0, 15 - len(features)))
+        return features[:FEATURE_COUNT] if len(features) >= FEATURE_COUNT else np.pad(
+            features, (0, FEATURE_COUNT - len(features))
+        )
 
     def _load_or_train_model(self):
         if os.path.exists(MODEL_PATH):
-            self.model = joblib.load(MODEL_PATH)
-        else:
-            self.model = self._bootstrap_model()
-            joblib.dump(self.model, MODEL_PATH)
+            model = joblib.load(MODEL_PATH)
+            model_feature_count = getattr(model, 'n_features_in_', None)
+            if model_feature_count == FEATURE_COUNT:
+                self.model = model
+                return
+            logging.getLogger(__name__).warning(
+                'Saved classifier expects %s features; rebuilding it for %s features.',
+                model_feature_count,
+                FEATURE_COUNT
+            )
+
+        self.model = self._bootstrap_model()
+        joblib.dump(self.model, MODEL_PATH)
 
     def _bootstrap_model(self):
         """
@@ -103,7 +116,9 @@ class CivicAIClassifier:
                 dark = np.clip(rng.normal(p['dark'], 0.05), 0, 1)
                 green = np.clip(rng.normal(p['green'], 0.05), 0, 1)
                 feat = np.concatenate([hist, [edge, texture, dark, green]])
-                feat = feat[:15] if len(feat) >= 15 else np.pad(feat, (0, 15 - len(feat)))
+                feat = feat[:FEATURE_COUNT] if len(feat) >= FEATURE_COUNT else np.pad(
+                    feat, (0, FEATURE_COUNT - len(feat))
+                )
                 X.append(feat)
                 y.append(cat)
 
